@@ -1,7 +1,7 @@
 /**
  * projection-channel.ts — 主控台 → 投影窗口 的状态同步通道
  *
- * 桌面端（Tauri v2）：window.__TAURI__.event.emit / listen；
+ * 桌面端（Tauri v2）：@tauri-apps/api/event 的 emit / listen；
  * 浏览器预览：BroadcastChannel（同一 origin 的 /output 标签页实时接收）。
  *
  * 握手（requestProjectionSync / onSyncRequest）：
@@ -12,14 +12,15 @@
  */
 
 import type { ProjectionPayload } from './types';
+import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 type Handler = (payload: ProjectionPayload) => void;
 
 const CHANNEL = 'bible-projection';
 const PING = '__projection_sync_request__';
 
-const isTauri = () =>
-  typeof window !== 'undefined' && !!(window as unknown as { __TAURI__?: { event?: { emit: Function; listen: Function } } }).__TAURI__?.event;
+/** 是否运行在 Tauri 运行时内（v2 注入 __TAURI_INTERNALS__，不再依赖 withGlobalTauri 的 window.__TAURI__） */
+const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 let bc: BroadcastChannel | null = null;
 function getBroadcast(): BroadcastChannel | null {
@@ -31,8 +32,7 @@ function getBroadcast(): BroadcastChannel | null {
 /** 发布投影状态（主控台调用） */
 export function publishProjection(payload: ProjectionPayload): void {
   if (isTauri()) {
-    const tauri = (window as unknown as { __TAURI__: { event: { emit: Function } } }).__TAURI__;
-    tauri.event.emit(CHANNEL, payload);
+    void emit(CHANNEL, payload);
     return;
   }
   getBroadcast()?.postMessage(payload);
@@ -41,8 +41,7 @@ export function publishProjection(payload: ProjectionPayload): void {
 /** 投影窗口请求一次当前状态（不重放历史，主动拉取） */
 export function requestProjectionSync(): void {
   if (isTauri()) {
-    const tauri = (window as unknown as { __TAURI__: { event: { emit: Function } } }).__TAURI__;
-    tauri.event.emit(PING, {});
+    void emit(PING, {});
     return;
   }
   getBroadcast()?.postMessage({ [PING]: true });
@@ -51,12 +50,11 @@ export function requestProjectionSync(): void {
 /** 订阅投影状态（投影窗口调用），返回取消订阅函数 */
 export function subscribeProjection(handler: Handler): () => void {
   if (isTauri()) {
-    const tauri = (window as unknown as { __TAURI__: { event: { listen: Function } } }).__TAURI__;
-    let unlisten: (() => void) | undefined;
+    let unlisten: UnlistenFn | undefined;
     let cancelled = false;
-    tauri.event.listen(CHANNEL, (event: { payload: ProjectionPayload }) => {
+    listen<ProjectionPayload>(CHANNEL, (event) => {
       handler(event.payload);
-    }).then((fn: () => void) => {
+    }).then((fn) => {
       if (cancelled) fn();
       else unlisten = fn;
     });
@@ -79,10 +77,9 @@ export function subscribeProjection(handler: Handler): () => void {
 /** 监听状态请求（主控台注册：收到后重发当前负载），返回取消订阅函数 */
 export function onSyncRequest(handler: () => void): () => void {
   if (isTauri()) {
-    const tauri = (window as unknown as { __TAURI__: { event: { listen: Function } } }).__TAURI__;
-    let unlisten: (() => void) | undefined;
+    let unlisten: UnlistenFn | undefined;
     let cancelled = false;
-    tauri.event.listen(PING, () => handler()).then((fn: () => void) => {
+    listen<unknown>(PING, () => handler()).then((fn) => {
       if (cancelled) fn();
       else unlisten = fn;
     });

@@ -44,7 +44,7 @@ src/
 
 ## 核心技术决策
 
-- **数据层双适配**：桌面端 `window.__TAURI__` 调 Rust 命令读 SQLite；
+- **数据层双适配**：桌面端经 `@tauri-apps/api` 的 `invoke` 调 Rust 命令读 SQLite；
   浏览器预览 fetch JSON 快照。上层 Store 无感。
 - **投影同步**：Tauri Event（桌面）/ BroadcastChannel（浏览器双标签页）。
 - **排版引擎**：阅读区与投影区设置完全分离，均经 CSS 变量 + Zustand 持久化下发。

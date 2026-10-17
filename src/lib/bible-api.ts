@@ -1,22 +1,24 @@
 /**
  * bible-api.ts — 数据访问层（双适配）
  *
- * 桌面端（Tauri）：经 window.__TAURI__.core.invoke 调用 Rust 命令
+ * 桌面端（Tauri v2）：经 @tauri-apps/api/core 的 invoke 调用 Rust 命令
  *   `bible_load_version`（第三阶段在 src-tauri 实现，直连 SQLite）；
  * 浏览器预览：fetch public/data/<code>.json 快照（由 export-snapshot.mjs 生成）。
  *
  * 上层 Store 只依赖本模块，不关心运行环境。
+ * Tauri 检测改用 window.__TAURI_INTERNALS__（v2 内置全局），
+ * 不再依赖 withGlobalTauri 注入的 window.__TAURI__。
  */
 
+import { invoke } from '@tauri-apps/api/core';
 import type { BookMeta, VersionData, VersionMeta } from './types';
 
-const isTauri = () =>
-  typeof window !== 'undefined' && !!(window as unknown as { __TAURI__?: { core?: { invoke: Function } } }).__TAURI__?.core?.invoke;
+/** 是否运行在 Tauri 运行时内（v2 注入 __TAURI_INTERNALS__） */
+const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 /** 调用 Tauri 命令（仅桌面端可用） */
 async function tauriInvoke<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
-  const tauri = (window as unknown as { __TAURI__: { core: { invoke: Function } } }).__TAURI__;
-  return tauri.core.invoke(cmd, args) as Promise<T>;
+  return invoke<T>(cmd, args);
 }
 
 /** 译本元数据列表 */

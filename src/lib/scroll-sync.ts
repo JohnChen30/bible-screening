@@ -1,3 +1,5 @@
+import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event';
+
 /**
  * scroll-sync.ts — 主控台 → 投影窗口 的滚动比例同步（反馈4-一）
  *
@@ -19,8 +21,8 @@ type RatioHandler = (index: number, ratio: number) => void;
 const CHANNEL = 'bible-projection-scroll';
 const PING = '__scroll_sync_request__';
 
-const isTauri = () =>
-  typeof window !== 'undefined' && !!(window as unknown as { __TAURI__?: { event?: { emit: Function; listen: Function } } }).__TAURI__?.event;
+/** 是否运行在 Tauri 运行时内（v2 注入 __TAURI_INTERNALS__，不再依赖 withGlobalTauri 的 window.__TAURI__） */
+const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 let bc: BroadcastChannel | null = null;
 function getBroadcast(): BroadcastChannel | null {
@@ -138,8 +140,7 @@ export function watchScroll(index: number, el: HTMLElement, onRatio: RatioHandle
 /** 广播滚动比例（主控台调用） */
 export function publishScrollRatio(index: number, ratio: number): void {
   if (isTauri()) {
-    const tauri = (window as unknown as { __TAURI__: { event: { emit: Function } } }).__TAURI__;
-    tauri.event.emit(CHANNEL, { index, ratio });
+    void emit(CHANNEL, { index, ratio });
     return;
   }
   getBroadcast()?.postMessage({ index, ratio });
@@ -148,12 +149,11 @@ export function publishScrollRatio(index: number, ratio: number): void {
 /** 订阅滚动比例（投影窗调用），返回取消订阅函数 */
 export function onScrollRatio(handler: RatioHandler): () => void {
   if (isTauri()) {
-    const tauri = (window as unknown as { __TAURI__: { event: { listen: Function } } }).__TAURI__;
-    let unlisten: (() => void) | undefined;
+    let unlisten: UnlistenFn | undefined;
     let cancelled = false;
-    tauri.event.listen(CHANNEL, (event: { payload: { index: number; ratio: number } }) => {
+    listen<{ index: number; ratio: number }>(CHANNEL, (event) => {
       handler(event.payload.index, event.payload.ratio);
-    }).then((fn: () => void) => {
+    }).then((fn) => {
       if (cancelled) fn();
       else unlisten = fn;
     });
@@ -176,8 +176,7 @@ export function onScrollRatio(handler: RatioHandler): () => void {
 /** 投影窗拉取当前比例（通道不重放历史，主动请求） */
 export function requestScrollSync(): void {
   if (isTauri()) {
-    const tauri = (window as unknown as { __TAURI__: { event: { emit: Function } } }).__TAURI__;
-    tauri.event.emit(PING, {});
+    void emit(PING, {});
     return;
   }
   getBroadcast()?.postMessage({ [PING]: true });
@@ -186,10 +185,9 @@ export function requestScrollSync(): void {
 /** 监听比例拉取请求（主控台注册），返回取消订阅函数 */
 export function onScrollSyncRequest(handler: () => void): () => void {
   if (isTauri()) {
-    const tauri = (window as unknown as { __TAURI__: { event: { listen: Function } } }).__TAURI__;
-    let unlisten: (() => void) | undefined;
+    let unlisten: UnlistenFn | undefined;
     let cancelled = false;
-    tauri.event.listen(PING, () => handler()).then((fn: () => void) => {
+    listen<unknown>(PING, () => handler()).then((fn) => {
       if (cancelled) fn();
       else unlisten = fn;
     });

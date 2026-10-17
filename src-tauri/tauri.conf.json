@@ -21,19 +21,6 @@
         "resizable": true,
         "fullscreen": false,
         "decorations": false
-      },
-      {
-        "label": "projection",
-        "title": "Bible Screening · 投影",
-        "url": "/output",
-        "width": 1600,
-        "height": 1000,
-        "resizable": true,
-        "fullscreen": true,
-        "decorations": false,
-        "alwaysOnTop": false,
-        "skipTaskbar": true,
-        "visible": false
       }
     ],
     "security": {

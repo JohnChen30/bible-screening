@@ -35,6 +35,7 @@ import {
   type Selection,
   type TypographySnapshot,
 } from '@/lib/types';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 
 /** 高亮节复合键：bookId:chapter:verse（跨多段面板唯一，避免不同章同节号错位高亮） */
 export const highlightKey = (bookId: number, chapter: number, verse: number) => `${bookId}:${chapter}:${verse}`;
@@ -93,6 +94,45 @@ interface PanelsState {
 
   /** 广播当前投影负载（内部） */
   sync: () => void;
+}
+
+/** 是否运行在 Tauri 运行时内（v2 注入 __TAURI_INTERNALS__） */
+const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+/** 打开（或复用）投影窗口：动态创建 'output' webview 并加载 index.html#/output 路由（HashRouter，规避 Tauri 无 SPA fallback） */
+let projectionWindowInFlight = false;
+function openProjectionWindow(): void {
+  if (!isTauri() || projectionWindowInFlight) return;
+  projectionWindowInFlight = true;
+  void WebviewWindow.getByLabel('output').then((existing) => {
+    if (existing) {
+      void existing.show();
+      projectionWindowInFlight = false;
+      return;
+    }
+    const webview = new WebviewWindow('output', {
+      url: 'index.html#/output',
+      fullscreen: true,
+      decorations: false,
+      visible: false, // 加载完再显示
+    });
+    webview.once('tauri://created', () => {
+      webview.show();
+      projectionWindowInFlight = false;
+    });
+    webview.once('tauri://error', (e) => {
+      console.error('[projection] 投影窗口创建失败', e);
+      projectionWindowInFlight = false;
+    });
+  });
+}
+
+/** 关闭投影窗口 */
+function closeProjectionWindow(): void {
+  if (!isTauri()) return;
+  void WebviewWindow.getByLabel('output').then((w) => {
+    if (w) void w.close();
+  });
 }
 
 /** 当前三屏应渲染的经文段（活动面板优先，否则由全局选区退化）
@@ -195,11 +235,13 @@ export const usePanelsStore = create<PanelsState>()(
       startProjection: () => {
         // 用户反馈：已去掉「默认自动滚动速度」，开始投影不再自动滚动
         set({ isProjecting: true, blackout: false, cleared: false, autoScroll: 0 });
+        openProjectionWindow();
         get().sync();
       },
 
   stopProjection: () => {
     set({ isProjecting: false, blackout: false, cleared: false, autoScroll: 0 });
+    closeProjectionWindow();
     get().sync();
   },
 

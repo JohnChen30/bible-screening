@@ -4,10 +4,11 @@
   "description": "enables the default permissions",
   "windows": [
     "main",
-    "projection"
+    "output"
   ],
   "permissions": [
     "core:default",
+    "core:webview:allow-create-webview-window",
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:window:allow-set-fullscreen",

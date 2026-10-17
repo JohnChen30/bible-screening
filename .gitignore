@@ -18,6 +18,9 @@ tauri-dev.log
 # Large binary design asset (kept locally only)
 圣经App界面设计 - 副本.pdf
 
+# Generated SQLite databases (regenerated from src-tools)
+*.db
+
 # OS cruft
 .DS_Store
 Thumbs.db

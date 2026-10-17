@@ -8,6 +8,7 @@
  *   - 游标所在节：节号变为强调色。
  */
 
+import { useRef } from 'react';
 import { cn } from '@/lib/utils';
 import type { TextHighlight } from '@/lib/types';
 import { useBibleStore } from '@/stores/use-bible-store';
@@ -54,6 +55,9 @@ export function VerseItem({
   const highlightsMap = highlightsOf(byPanel, activePanelId);
   const highlights = highlightsMap[verseKey(versionCode, bookId, chapter, verse)] ?? EMPTY_HIGHLIGHTS;
 
+  /** 按下位置：用于区分「拖选文字的 mouseup→click」与「真正的点选整节」 */
+  const downPos = useRef<{ x: number; y: number } | null>(null);
+
   return (
     <span
       // 段落内联模式：节元素自身承载 data-verse（逐节模式由外层行容器承载，见 passage-view）
@@ -72,11 +76,17 @@ export function VerseItem({
               paddingBottom: 'calc(0.125rem * var(--canvas-scale, 1))',
             }
       }
-      onClick={() => {
-        // 拖选文字后的 mouseup 也会触发 click：若当前仍有非折叠的文字选区，说明这次 click
-        // 来自「拖选」而非「点选整节」，绝不能误触发整节选中（强调色）——只选文字、不选经文。
-        const sel = window.getSelection();
-        if (sel && !sel.isCollapsed) return;
+      onMouseDown={(e) => {
+        downPos.current = { x: e.clientX, y: e.clientY };
+      }}
+      onClick={(e) => {
+        // 用「按下→抬起」的指针位移区分拖选与点选（不再用 getSelection().isCollapsed）：
+        //   位移明显 = 拖选文字（mouseup 顺带触发 click）→ 不切换整节强调色；
+        //   位移≈0   = 真正的点选 → 切换强调色。
+        // 这样即便为了保留文字选区而 preventDefault（原生选区长期非折叠），
+        // 点选经文也不会再被误判为「拖选结尾」而失效。
+        const d = downPos.current;
+        if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
         // 点选整节：切换该节强调色（多选模式累加、单选模式只保留一节）。
         // 强调色集合（highlightedVerses）即「选中的经文」——复制浮条据此显示、复制后一并清空。
         onActivate?.();

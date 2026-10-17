@@ -23,12 +23,20 @@ interface ProjectionSettings {
    */
   panelStartup: PanelStartup;
 
+  /**
+   * 投影目标屏幕（显示器标识，对应 Tauri Monitor.name）。
+   * null = 自动：优先投到与主窗口不同的那块扩展屏，单屏时退回系统默认全屏；
+   * 非 null 且仍能匹配到在线显示器时，强制投到该屏幕。
+   */
+  projectionScreen: string | null;
+
   set: <K extends keyof ProjectionSettings>(key: K, value: ProjectionSettings[K]) => void;
   reset: () => void;
 }
 
 const DEFAULTS: Omit<ProjectionSettings, 'set' | 'reset'> = {
   panelStartup: 'new',
+  projectionScreen: null,
 };
 
 export const useProjectionSettingsStore = create<ProjectionSettings>()(

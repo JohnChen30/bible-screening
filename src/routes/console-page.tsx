@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getTheme, setTheme, toggleTheme, type Theme } from '@/lib/theme';
-import { onSyncRequest } from '@/lib/projection-channel';
+import { onSyncRequest, subscribeProjectionStop } from '@/lib/projection-channel';
 import { MillerColumns } from '@/components/miller-columns/miller-columns';
 import { ReaderPane } from '@/components/reader/reader-pane';
 import { PanelCanvas } from '@/components/reader/panel-canvas';
@@ -38,6 +38,7 @@ import { TitleModeSwitch } from '@/components/reader/title-mode-switch';
 import { SearchBox } from '@/components/search/search-box';
 import { PanelBar } from '@/components/panels/panel-bar';
 import { SettingsPopover } from '@/components/settings/settings-popover';
+import { TitleBar } from '@/components/title-bar';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
@@ -273,6 +274,9 @@ export function ConsolePage() {
   /* 投影窗口（后开的标签页）请求当前状态 → 重发负载 */
   useEffect(() => onSyncRequest(() => usePanelsStore.getState().sync()), []);
 
+  /* 投影窗口按 Esc 关闭后 → 重置主控台投影状态（isProjecting=false、关闭已关闭的窗口、广播） */
+  useEffect(() => subscribeProjectionStop(() => usePanelsStore.getState().stopProjection()), []);
+
   /* 切换书卷/章 → 重置跟读游标（避免旧节号在新篇章上错位高亮） */
   const prevChapRef = useRef<{ bookId: number | null; chapter: number | null } | null>(null);
   useEffect(() => {
@@ -292,7 +296,9 @@ export function ConsolePage() {
   };
 
   return (
-    <div ref={rootRef} id="app-root-fs" className="flex h-dvh overflow-hidden bg-background text-foreground">
+    <div ref={rootRef} id="app-root-fs" className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+      <TitleBar />
+      <div className="flex min-h-0 flex-1">
       {/* ============ 左侧：Miller Columns ============ */}
       {/* 收起侧栏时主区变宽 → 预览「等比放大」填满空间；放大用的基准宽被冻结，
           故投影画面保持不变（见 sidebarOpenRef）。 */}
@@ -492,6 +498,7 @@ export function ConsolePage() {
         {/* 底部多面板栏 */}
         <PanelBar />
       </main>
+      </div>
     </div>
   );
 }

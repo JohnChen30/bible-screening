@@ -36,6 +36,7 @@ import {
   type TypographySnapshot,
 } from '@/lib/types';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { availableMonitors, currentMonitor, primaryMonitor, type Monitor } from '@tauri-apps/api/window';
 
 /** 高亮节复合键：bookId:chapter:verse（跨多段面板唯一，避免不同章同节号错位高亮） */
 export const highlightKey = (bookId: number, chapter: number, verse: number) => `${bookId}:${chapter}:${verse}`;
@@ -99,39 +100,115 @@ interface PanelsState {
 /** 是否运行在 Tauri 运行时内（v2 注入 __TAURI_INTERNALS__） */
 const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
-/** 打开（或复用）投影窗口：动态创建 'output' webview 并加载 index.html#/output 路由（HashRouter，规避 Tauri 无 SPA fallback） */
+/**
+ * 选择投影目标显示器：
+ * - 用户在设置里明确选了某块屏幕（projectionScreen = Monitor.name）且仍在线 → 用它；
+ * - 否则自动：多屏时投到「与主窗口不同的那块」（扩展屏），单屏退回 null（系统默认全屏）。
+ */
+async function pickProjectionMonitor(): Promise<Monitor | null> {
+  const preferred = useProjectionSettingsStore.getState().projectionScreen;
+  try {
+    const monitors = await availableMonitors();
+    if (monitors.length === 0) return null;
+    if (preferred) {
+      const picked = monitors.find((m) => m.name === preferred);
+      if (picked) return picked; // 用户指定且仍在线
+    }
+    if (monitors.length <= 1) return null;
+    const main = await currentMonitor();
+    if (main) {
+      const others = monitors.filter((m) => m.name !== main.name);
+      if (others.length > 0) return others[0];
+    }
+    const primary = await primaryMonitor();
+    const nonPrimary = monitors.filter((m) => !primary || m.name !== primary.name);
+    return nonPrimary[0] ?? null;
+  } catch (e) {
+    console.error('[projection] 获取显示器列表失败，退回默认全屏', e);
+    return null;
+  }
+}
+
+/**
+ * 把投影窗口放到目标显示器：优先 `setFullscreenOnMonitor`（真全屏、隐藏任务栏）；
+ * 该命令不可用时退回系统全屏 `setFullscreen(true)`（已授权）。
+ */
+async function placeOnMonitor(win: WebviewWindow, target: Monitor | null): Promise<void> {
+  try {
+    if (target) {
+      try {
+        await win.setFullscreenOnMonitor(target.position);
+      } catch (e) {
+        console.error('[projection] setFullscreenOnMonitor 失败，退回系统全屏', e);
+        await win.setFullscreen(true).catch(() => {});
+      }
+      await win.setFocus().catch(() => {});
+    } else {
+      await win.setFullscreen(true).catch(() => {});
+    }
+  } catch (e) {
+    console.error('[projection] 投影窗定位失败', e);
+  }
+}
+
+/** 打开（或复用）投影窗口：动态创建 'output' webview 并加载 index.html#/output 路由，落在选定/扩展屏 */
 let projectionWindowInFlight = false;
-function openProjectionWindow(): void {
+async function openProjectionWindow(): Promise<void> {
   if (!isTauri() || projectionWindowInFlight) return;
   projectionWindowInFlight = true;
-  void WebviewWindow.getByLabel('output').then((existing) => {
+  /**
+   * 兜底：无论走哪条路径，最多 8s 后都复位「创建中」标志。
+   * 否则一旦某次创建/显示中途抛错或事件没回来，标志会永久卡在 true，
+   * 之后点「投影」全部直接 return —— 表现就是「按投影投不上去」。
+   */
+  const guard = window.setTimeout(() => {
+    projectionWindowInFlight = false;
+  }, 8000);
+  try {
+    const target = await pickProjectionMonitor();
+    let existing: WebviewWindow | null = null;
+    try {
+      existing = await WebviewWindow.getByLabel('output');
+    } catch {
+      existing = null;
+    }
     if (existing) {
-      void existing.show();
+      await placeOnMonitor(existing, target);
+      await existing.show();
+      window.clearTimeout(guard);
       projectionWindowInFlight = false;
       return;
     }
     const webview = new WebviewWindow('output', {
       url: 'index.html#/output',
-      fullscreen: true,
+      // 无目标屏（单屏 / 未选）退回系统全屏；有目标屏先建为无边框窗，创建后再 setFullscreenOnMonitor
+      fullscreen: !target,
       decorations: false,
       visible: false, // 加载完再显示
     });
-    webview.once('tauri://created', () => {
-      webview.show();
+    webview.once('tauri://created', async () => {
+      window.clearTimeout(guard);
+      await placeOnMonitor(webview, target);
+      await webview.show();
       projectionWindowInFlight = false;
     });
     webview.once('tauri://error', (e) => {
       console.error('[projection] 投影窗口创建失败', e);
+      window.clearTimeout(guard);
       projectionWindowInFlight = false;
     });
-  });
+  } catch (e) {
+    console.error('[projection] 打开投影窗口失败', e);
+    window.clearTimeout(guard);
+    projectionWindowInFlight = false;
+  }
 }
 
 /** 关闭投影窗口 */
 function closeProjectionWindow(): void {
   if (!isTauri()) return;
   void WebviewWindow.getByLabel('output').then((w) => {
-    if (w) void w.close();
+    if (w) void w.close().catch(() => {});
   });
 }
 

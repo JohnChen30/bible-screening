@@ -97,3 +97,50 @@ export function onSyncRequest(handler: () => void): () => void {
   channel.addEventListener('message', listener);
   return () => channel.removeEventListener('message', listener);
 }
+
+/**
+ * 投影停止信号通道（独立于投影状态通道，避免被 subscribeProjection 误当成 payload 处理）。
+ *
+ * 用途：投影窗口（`/output`）按 Esc 关闭自身后，通过此通道通知主控台把 `isProjecting`
+ * 重置为 false（主控台是投影生命周期的权威状态持有者；投影窗口各自的 store 实例互不可见，
+ * 且 `isProjecting` 未持久化，故必须用显式信号跨窗口同步）。
+ */
+
+const CHANNEL_STOP = 'bible-projection-stop';
+
+let stopBc: BroadcastChannel | null = null;
+function getStopBroadcast(): BroadcastChannel | null {
+  if (typeof BroadcastChannel === 'undefined') return null;
+  if (!stopBc) stopBc = new BroadcastChannel(CHANNEL_STOP);
+  return stopBc;
+}
+
+/** 投影窗口通知主控台停止投影（Esc 关闭本窗口时调用） */
+export function publishProjectionStop(): void {
+  if (isTauri()) {
+    void emit(CHANNEL_STOP, {});
+    return;
+  }
+  getStopBroadcast()?.postMessage({ stop: true });
+}
+
+/** 主控台订阅投影停止信号，返回取消订阅函数 */
+export function subscribeProjectionStop(handler: () => void): () => void {
+  if (isTauri()) {
+    let unlisten: UnlistenFn | undefined;
+    let cancelled = false;
+    listen<unknown>(CHANNEL_STOP, () => handler()).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }
+  const channel = getStopBroadcast();
+  if (!channel) return () => {};
+  const listener = () => handler();
+  channel.addEventListener('message', listener);
+  return () => channel.removeEventListener('message', listener);
+}

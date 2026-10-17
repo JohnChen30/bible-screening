@@ -12,7 +12,6 @@
  */
 
 import { useEffect, useMemo, useRef } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useBibleStore } from '@/stores/use-bible-store';
@@ -28,7 +27,6 @@ import {
   watchScroll,
 } from '@/lib/scroll-sync';
 import type { BookMeta, CompareMode, PassageItem, TextHighlight, TitleMode, VersionData } from '@/lib/types';
-import { useCanvasScale } from './panel-canvas';
 import { VerseItem } from './verse-item';
 import { VerseText } from './verse-text';
 import { SelectionCopyBar } from './selection-copy-bar';
@@ -325,6 +323,8 @@ function makeTitleBlock(title: string, titleMode: TitleMode, t: PassageTypograph
         marginRight: 'var(--reader-pad)',
         paddingTop: 'calc(0.25rem * var(--canvas-scale, 1))',
         paddingBottom: 'calc(1.25rem * var(--canvas-scale, 1))',
+        // 内联 textAlign 兜底：不依赖 Tailwind 类权重 / 继承，确保「标题对齐」设置始终生效
+        textAlign: t.titleAlign ?? 'left',
       }}
     >
       <h2
@@ -334,6 +334,7 @@ function makeTitleBlock(title: string, titleMode: TitleMode, t: PassageTypograph
           fontFamily: 'var(--reader-font-family)',
           color: 'var(--reader-title, var(--reader-text))',
           fontSize: 'calc(1.875rem * var(--canvas-scale, 1))',
+          textAlign: t.titleAlign ?? 'left',
         }}
       >
         {title || '—'}
@@ -438,8 +439,6 @@ export function PassageView({
   useAutoScroll(parentRef, autoScroll);
   // 光标拖选捕获（仅交互模式）：拖选经文 → 解析字符区间 → 供高亮/下划线只作用于选区
   useCaptureTextSelection(parentRef, interactive);
-  /** 画布等比缩放系数（预览=1，投影=放大倍数）：行高估算需同步放大 */
-  const scale = useCanvasScale();
 
   const sections = useMemo(
     () => passages.map((p) => buildSection(p, books, dataCache, versionCodes, t, header)),
@@ -447,50 +446,50 @@ export function PassageView({
     [passages, books, dataCache, versionCodes.join(','), t.layoutMode, t.titleFormat, t.titleMode, t.fontSize, t.titleAlign, t.margin, header],
   );
 
-  /** 单段 pinned 标题渲染在滚动区之外（与多段 / inline 区分开） */
-  const singlePinned = sections.length === 1 && sections[0].titleMode === 'pinned' && sections[0].showTitle;
+  /**
+   * pinned 标题渲染在滚动区之外（常驻）。支持多段：多段时各段的 pinned 标题按顺序
+   * 堆叠在滚动区上方、始终可见。（此前仅「单段」才常驻，多段面板下标题退回内联、
+   * 跟着滚走 —— 即「标题常驻失效」。）
+   */
+  const pinnedSections = sections.filter((s) => s.showTitle && s.titleMode === 'pinned');
+  const hasPinned = pinnedSections.length > 0;
 
   /** 扁平渲染列表：多段时每段标题 + 经文 + 段间分割线 */
   const flat = useMemo<FlatItem[]>(() => {
     const out: FlatItem[] = [];
     sections.forEach((s, i) => {
       if (i > 0) out.push({ type: 'divider', key: `divider-${i}` });
-      if (s.showTitle && !singlePinned) out.push({ type: 'title', key: `title-${i}`, title: s.title, titleMode: s.titleMode });
+      // pinned 标题统一渲染在滚动区外（见 pinnedSections），这里只放非 pinned 标题进虚拟列表
+      if (s.showTitle && s.titleMode !== 'pinned') out.push({ type: 'title', key: `title-${i}`, title: s.title, titleMode: s.titleMode });
       for (const r of s.rows) {
         if (r.kind === 'verse') out.push({ type: 'row', key: `s${i}-v${r.verse}`, row: r });
         else out.push({ type: 'row', key: `s${i}-p${r.verses[0]}`, row: r });
       }
     });
     return out;
-  }, [sections, singlePinned]);
+  }, [sections]);
 
   const hasContent = flat.some((it) => it.type === 'row');
 
   usePassageScrollSync(parentRef, scrollIndex, scrollSync, flat);
 
-  const virtualizer = useVirtualizer({
-    count: flat.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: (i) => {
-      const it = flat[i];
-      if (!it) return Math.round((t.fontSize * t.lineHeight + 12) * scale);
-      if (it.type === 'title') return Math.round((t.fontSize * 1.2 + 30) * scale);
-      if (it.type === 'divider') return Math.round(1.4 * 16 * scale);
-      if (it.row.kind === 'para') return Math.round((t.fontSize * t.lineHeight + 12) * 5 * scale);
-      return Math.round((t.fontSize * t.lineHeight + 12) * scale);
-    },
-    measureElement: (el) => el.getBoundingClientRect().height,
-    overscan: 6,
-  });
+  // ── 经文列表改为「正常文档流」渲染（不再使用虚拟滚动）──────────────────────
+  // 每屏经文通常只有几十行。虚拟列表的「行高测量 + 绝对定位」在切译本 / 改排版 / 缩放时
+  // 会让相邻行按旧高度摆放而重叠。改为文档流后由浏览器自身排版，物理上不可能重叠；
+  // 滚动同步 / 自动滚动 / 定位都作用在同一个滚动容器上，不受影响。
 
-  /** 投影页：滚动到跟读游标（两种排版模式均走虚拟列表） */
+  /** 投影页 / 跟读：滚动到指定节（DOM 查询 + scrollIntoView，替代原虚拟列表 scrollToIndex） */
   useEffect(() => {
     if (scrollToVerse == null) return;
-    const idx = flat.findIndex(
-      (it) => it.type === 'row' && (it.row.kind === 'verse' ? it.row.verse === scrollToVerse : it.row.verses.includes(scrollToVerse)),
-    );
-    if (idx < 0) return;
-    virtualizer.scrollToIndex(idx, { align: 'center' });
+    const host = parentRef.current;
+    if (!host) return;
+    const target = host.querySelector<HTMLElement>(`[data-verse="${scrollToVerse}"]`);
+    if (!target) return;
+    try {
+      target.scrollIntoView({ block: 'center' });
+    } catch {
+      /* noop */
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollToVerse]);
 
@@ -506,8 +505,14 @@ export function PassageView({
       {/* 拖选 / 单击经文后的「复制经文」浮条（仅交互模式：主控台阅读区），停靠面板底部 */}
       {interactive && <SelectionCopyBar containerRef={parentRef} />}
 
-      {/* 单段 pinned 标题（常驻顶部）：渲染在滚动区之外，经文滚动时标题不动 */}
-      {singlePinned && <div className="shrink-0">{titleColumn(makeTitleBlock(sections[0].title, sections[0].titleMode, t))}</div>}
+      {/* pinned 标题（常驻顶部）：渲染在滚动区之外，经文滚动时标题不动；多段时按段堆叠 */}
+      {hasPinned && (
+        <div className="shrink-0">
+          {pinnedSections.map((s, i) => (
+            <div key={`pinned-${i}-${s.title}`}>{titleColumn(makeTitleBlock(s.title, s.titleMode, t))}</div>
+          ))}
+        </div>
+      )}
 
       {/* 圣经版本水印：右下角、半透明、不拦截指针事件（替代原先每节上方的版本名标签）；
           空面板（清屏）不显示水印，保持干净画面 */}
@@ -530,32 +535,33 @@ export function PassageView({
           )
         ) : (
           <div
-            className="relative mx-auto w-full"
+            className="mx-auto w-full"
             style={{
-              height: virtualizer.getTotalSize(),
               maxWidth: 'calc(48rem * var(--canvas-scale, 1))',
               textAlign: t.verseAlign ?? 'left',
             }}
           >
-            {virtualizer.getVirtualItems().map((vi) => {
-              const it = flat[vi.index];
-              if (!it) return null;
+            {flat.map((it) => {
               const isTitle = it.type === 'title';
+              // 每行包一层 flow-root：作为独立排版块，避免相邻行 margin 折叠、且由浏览器
+              // 正常流式排版（不再是绝对定位），从结构上杜绝行与行重叠。
+              // 标题：整列宽，内缩交给 title-in 的 margin（与经文同缘对齐）；
+              // 经文 / 分割线：左右 padding 内缩（与原先 left/right 偏移一致）。
               return (
                 <div
                   key={it.key}
-                  data-index={vi.index}
-                  ref={virtualizer.measureElement}
-                  className={cn('absolute', it.type === 'divider' && 'passage-divider')}
                   style={{
-                    top: vi.start,
-                    // 标题块自带 margin 内缩；经文 / 分割线用 left/right 偏移（与标题同缘对齐）
-                    ...(isTitle ? {} : { left: 'var(--reader-pad)', right: 'var(--reader-pad)' }),
+                    display: 'flow-root',
+                    ...(isTitle
+                      ? {}
+                      : { paddingLeft: 'var(--reader-pad)', paddingRight: 'var(--reader-pad)' }),
                   }}
                 >
-                  {it.type === 'title' ? (
+                  {isTitle ? (
                     titleColumn(makeTitleBlock(it.title, it.titleMode, t))
-                  ) : it.type === 'divider' ? null : it.row.kind === 'verse' ? (
+                  ) : it.type === 'divider' ? (
+                    <div className="passage-divider relative" />
+                  ) : it.row.kind === 'verse' ? (
                     <VerseBlock
                       row={it.row}
                       typography={t}
@@ -661,12 +667,6 @@ function useCaptureTextSelection(containerRef: React.RefObject<HTMLDivElement | 
         const chapter = Number(c);
         const verse = Number(v);
         const versionCode = vc;
-        // 光标拖选 = 「选中这些文字」，绝不表示「选中此段经文」：拖选涉及的节立即撤掉整节强调色，
-        // 避免经文在拖选期间仍显示强调色（与「光标选区高亮只作用于选区文字」的语义一致）
-        const accentKey = highlightKey(bookId, chapter, verse);
-        if (usePanelsStore.getState().highlightedVerses.includes(accentKey)) {
-          usePanelsStore.getState().removeHighlightedVerse(accentKey);
-        }
         const len = el.textContent?.length ?? 0;
         if (len === 0) continue;
         // comparePoint 的第二参数是「子节点偏移」，不是字符偏移——必须用 childNodes.length 取元素尾边界

@@ -20,6 +20,8 @@ tauri-dev.log
 
 # Generated SQLite databases (regenerated from src-tools)
 *.db
+*.db-shm
+*.db-wal
 
 # OS cruft
 .DS_Store

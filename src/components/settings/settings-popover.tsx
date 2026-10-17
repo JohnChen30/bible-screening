@@ -20,6 +20,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useReaderSettingsStore } from '@/stores/use-reader-settings-store';
 import { useColorSchemesStore, type ColorScheme } from '@/stores/use-color-schemes-store';
 import { useProjectionSettingsStore, type PanelStartup } from '@/stores/use-projection-settings-store';
+import { availableMonitors, currentMonitor, primaryMonitor, type Monitor } from '@tauri-apps/api/window';
 import { useCanvasSettingsStore } from '@/stores/use-canvas-settings-store';
 import { useBibleStore } from '@/stores/use-bible-store';
 import type { AspectRatio } from '@/lib/types';
@@ -311,6 +312,7 @@ export function SettingsPopover() {
           )}
 
           {tab === 'panel' && (
+            <>
             <Section title="面板">
               {/* 面板比例（用户反馈：由「标题」目录移入「面板」） */}
               <SegRow label="面板比例（阅读 / 投影通用）" value={aspectRatio} options={RATIOS} onChange={setAspectRatio} />
@@ -329,6 +331,14 @@ export function SettingsPopover() {
                 高亮与下划线只在当前面板生效，不永久保存。
               </p>
             </Section>
+
+            <Section title="投影屏幕">
+              <ProjectionScreenPicker />
+              <p className="px-0.5 text-[11px] leading-relaxed text-muted-foreground/70">
+                选择投影窗口落在哪块屏幕。默认「自动」会投到与主窗口不同的扩展屏；也可固定到指定显示器。
+              </p>
+            </Section>
+            </>
           )}
 
           <Button
@@ -348,6 +358,124 @@ export function SettingsPopover() {
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * 投影屏幕选择器：列出所有显示器，用户自由选择；默认「自动」投到扩展屏。
+ * 仅 Tauri 桌面端可读显示器列表；浏览器预览下提示回退系统全屏。
+ */
+function ProjectionScreenPicker() {
+  const selected = useProjectionSettingsStore((s) => s.projectionScreen);
+  const setSetting = useProjectionSettingsStore((s) => s.set);
+  const [monitors, setMonitors] = useState<Monitor[]>([]);
+  const [currentName, setCurrentName] = useState<string | null>(null);
+  const [primaryName, setPrimaryName] = useState<string | null>(null);
+  const [state, setState] = useState<'loading' | 'ready' | 'na'>('loading');
+
+  useEffect(() => {
+    let alive = true;
+    const tauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+    if (!tauri) {
+      setState('na');
+      return;
+    }
+    void (async () => {
+      try {
+        const [ms, cur, pri] = await Promise.all([availableMonitors(), currentMonitor(), primaryMonitor()]);
+        if (!alive) return;
+        setMonitors(ms);
+        setCurrentName(cur?.name ?? null);
+        setPrimaryName(pri?.name ?? null);
+        setState('ready');
+      } catch (e) {
+        console.error('[settings] 读取显示器失败', e);
+        if (alive) setState('na');
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const labelFor = (m: Monitor, i: number) => {
+    if (m.name === primaryName) return '主显示器';
+    if (m.name === currentName) return '当前屏幕（主窗口所在）';
+    return `屏幕 ${i + 1}`;
+  };
+
+  if (state === 'na') {
+    return (
+      <p className="px-0.5 text-[11px] leading-relaxed text-muted-foreground/70">
+        仅 Tauri 桌面端可选择投影屏幕；浏览器预览将使用系统默认全屏。
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <ScreenOption
+        active={selected === null}
+        onClick={() => setSetting('projectionScreen', null)}
+        title="自动（扩展屏）"
+        desc="多屏时投到与主窗口不同的屏幕，单屏退回系统全屏"
+      />
+      {state === 'loading' ? (
+        <p className="px-0.5 text-[11px] text-muted-foreground/60">正在读取显示器…</p>
+      ) : (
+        monitors.map((m, i) => {
+          const w = Math.round(m.size.width / m.scaleFactor);
+          const h = Math.round(m.size.height / m.scaleFactor);
+          return (
+            <ScreenOption
+              key={m.name ?? i}
+              active={selected === m.name}
+              onClick={() => setSetting('projectionScreen', m.name ?? null)}
+              title={labelFor(m, i)}
+              desc={`${w}×${h}${m.name ? ` · ${m.name}` : ''}`}
+            />
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+function ScreenOption({
+  active,
+  onClick,
+  title,
+  desc,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  desc?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors',
+        active
+          ? 'bg-accent/[0.1] text-accent ring-1 ring-inset ring-accent/40'
+          : 'text-foreground/85 hover:bg-foreground/[0.05]',
+      )}
+    >
+      <span
+        className={cn(
+          'flex h-4 w-4 shrink-0 items-center justify-center rounded-full ring-1 ring-inset',
+          active ? 'ring-accent' : 'ring-foreground/25',
+        )}
+      >
+        {active && <span className="h-2 w-2 rounded-full bg-accent" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{title}</span>
+        {desc && <span className="block truncate text-[10px] text-muted-foreground/70">{desc}</span>}
+      </span>
+    </button>
   );
 }
 

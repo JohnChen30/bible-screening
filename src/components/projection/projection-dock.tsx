@@ -19,10 +19,10 @@ import { cn } from '@/lib/utils';
 import { type TextHighlight } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { PaletteManagerButton } from '@/components/ui/palette-manager-button';
-import { usePanelsStore, highlightKey } from '@/stores/use-panels-store';
+import { usePanelsStore } from '@/stores/use-panels-store';
 import { useBibleStore } from '@/stores/use-bible-store';
 import { highlightsOf, NO_PANEL, useHighlightsStore, verseKey } from '@/stores/use-highlights-store';
-import { useTextSelectionStore } from '@/stores/use-text-selection-store';
+import { suppressSelectionClearFor, useTextSelectionStore } from '@/stores/use-text-selection-store';
 import { highlightBg, usePaletteStore } from '@/stores/use-palette-store';
 
 /** 稳定空数组引用 */
@@ -62,7 +62,6 @@ export function ProjectionDock() {
   const removeHighlight = useHighlightsStore((s) => s.remove);
   const clearPanel = useHighlightsStore((s) => s.clearPanel);
   const clearHighlightedVerses = usePanelsStore((s) => s.clearHighlightedVerses);
-  const removeHighlightedVerse = usePanelsStore((s) => s.removeHighlightedVerse);
 
   /** 取某节经文长度（用于整节高亮区间判定） */
   const verseLengthOf = (vc: string, b: number, c: number, v: number) => {
@@ -77,6 +76,26 @@ export function ProjectionDock() {
   const hasPending = pendingRanges.length > 0;
   const clearPending = useTextSelectionStore((s) => s.clear);
 
+  /**
+   * 点击「高亮 / 下划线」等效果按钮时，仅在 mousedown→click 这一瞬间保住拖选快照
+   * （pendingRanges），让 applyHighlight 能读到选区并应用；应用完立即收起焦点。
+   * 不做 preventDefault：让原生选区照常折叠（用户要求：加完效果焦点就消失）。
+   */
+  const keepSelection = () => {
+    suppressSelectionClearFor();
+  };
+
+  /**
+   * 应用格式后收起「选择焦点」：清掉文字选区快照 + 原生选区 + 整节强调色，
+   * 但**不动**已写入的高亮/下划线。用户要求：加完效果即取消选择，
+   * 这样可以直接去选别的经文，且原来那节的高亮/下划线仍然保留。
+   */
+  const clearSelectionAfterApply = () => {
+    clearPending();
+    window.getSelection()?.removeAllRanges();
+    clearHighlightedVerses();
+  };
+
   /** 高亮目标区间：光标选区优先（按版本+节定位）；否则整节已选经文（start0/end len） */
   const targets: { key: string; start: number; end: number }[] = hasPending
     ? pendingRanges.map((r) => ({ key: verseKey(r.versionCode, r.bookId, r.chapter, r.verse), start: r.start, end: r.end }))
@@ -88,18 +107,11 @@ export function ProjectionDock() {
       : [];
   const hasTarget = targets.length > 0;
 
-  /** 光标选区高亮：撤掉这些节原本的整节强调色，仅保留精确选区高亮（用户要求：选区不应带整节强调） */
-  const dropAccentForPending = () => {
-    if (!hasPending) return;
-    for (const r of pendingRanges) removeHighlightedVerse(highlightKey(r.bookId, r.chapter, r.verse));
-  };
-
   /** 5 色调色盘：作用于「目标区间」。再点同色 → 取消该高亮（切换） */
   const applyHighlight = (color: string) => {
     if (!primary || !hasTarget) return;
     // 色板存底色 hex，渲染时按固定不透明度叠加（color-mix），不改文字颜色
     const bg = highlightBg(color);
-    dropAccentForPending();
     for (const t of targets) {
       const existing = highlightsMap[t.key] ?? EMPTY_HIGHLIGHTS;
       const tgt = existing.find((h) => h.start === t.start && h.end === t.end);
@@ -107,12 +119,12 @@ export function ProjectionDock() {
       else if (tgt) updateHighlight(panelId, t.key, tgt.id, { color: bg });
       else addHighlight(panelId, t.key, { start: t.start, end: t.end, color: bg, underline: false });
     }
+    clearSelectionAfterApply();
   };
 
   /** 下划线：作用于目标区间。再点 → 取消下划线（切换） */
   const applyUnderline = () => {
     if (!primary || !hasTarget) return;
-    dropAccentForPending();
     for (const t of targets) {
       const existing = highlightsMap[t.key] ?? EMPTY_HIGHLIGHTS;
       const tgt = existing.find((h) => h.start === t.start && h.end === t.end);
@@ -122,6 +134,7 @@ export function ProjectionDock() {
         else removeHighlight(panelId, t.key, tgt.id);
       } else updateHighlight(panelId, t.key, tgt.id, { underline: true });
     }
+    clearSelectionAfterApply();
   };
 
   /** 清除格式：清掉「此页」的全部格式——高亮（含整节 / 选区）、下划线、选中态，并清掉光标选区快照 */
@@ -191,6 +204,7 @@ export function ProjectionDock() {
               aria-label={`高亮-${i + 1}`}
               aria-pressed={isColorActive(c)}
               disabled={!hasTarget}
+              onMouseDown={keepSelection}
               onClick={() => applyHighlight(c)}
               className={cn(
                 'h-5 w-5 rounded-full ring-1 ring-inset ring-black/10 transition-transform hover:scale-115 focus-ring disabled:opacity-40 disabled:pointer-events-none',
@@ -201,12 +215,13 @@ export function ProjectionDock() {
           ))}
           {/* 色板管理：彩虹圆圈 + 齿轮，逐个调整色圈颜色 */}
           <PaletteManagerButton palette="highlight" side="top" />
-          <button
-            title={`下划线（${hasPending ? '作用于选区文字' : '作用于已选经文'}；再点去掉）`}
-            aria-label="下划线"
-            aria-pressed={anyUnderline}
-            disabled={!hasTarget}
-            onClick={applyUnderline}
+            <button
+              title={`下划线（${hasPending ? '作用于选区文字' : '作用于已选经文'}；再点去掉）`}
+              aria-label="下划线"
+              aria-pressed={anyUnderline}
+              disabled={!hasTarget}
+              onMouseDown={keepSelection}
+              onClick={applyUnderline}
             className={cn(
               'flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-foreground/5 hover:text-foreground focus-ring disabled:opacity-40 disabled:pointer-events-none',
               anyUnderline ? 'bg-accent/15 text-accent' : 'text-muted-foreground',
@@ -268,6 +283,7 @@ export function ProjectionDock() {
                       key={i}
                       title={`强调色 ${c}`}
                       aria-label={`强调色-${c}`}
+                      onMouseDown={keepSelection}
                       onClick={() => {
                         setSelectColor(c);
                         setAccentOpen(false);

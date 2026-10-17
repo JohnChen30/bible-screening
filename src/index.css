@@ -63,6 +63,10 @@
   body,
   #root {
     height: 100%;
+    /* 禁用整页滚动与过滚动回弹：面板滚到顶/底时，窗口外框与系统不得随之
+       弹性位移（用户反馈：滚动只针对面板，不针对系统）。 */
+    overflow: hidden;
+    overscroll-behavior: none;
   }
 
   body {
@@ -107,6 +111,8 @@
 .scrollbar-thin {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  /* 面板滚到顶/底：不链给外层、也不做任何弹性回弹（用户要求：去掉所有弹性）。 */
+  overscroll-behavior: none;
 }
 .scrollbar-thin::-webkit-scrollbar {
   width: 6px;

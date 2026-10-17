@@ -23,6 +23,7 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.12.4", features = [] }
 tauri-plugin-log = "2"
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 # Disable incremental compilation for debug builds. This toolchain (rustc 1.99.0 /
 # MSVC) hits an internal compiler error (`rustc_metadata::encode_metadata`

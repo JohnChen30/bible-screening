@@ -14,7 +14,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { BookOpen } from 'lucide-react';
-import { subscribeProjection, requestProjectionSync } from '@/lib/projection-channel';
+import { subscribeProjection, requestProjectionSync, publishProjectionStop } from '@/lib/projection-channel';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { applyScrollRatio, onScrollRatio, requestScrollSync } from '@/lib/scroll-sync';
 import { useBibleStore } from '@/stores/use-bible-store';
 import { useHighlightsStore } from '@/stores/use-highlights-store';
@@ -77,6 +78,23 @@ export function OutputPage() {
 
   // 滚动比例同步（反馈4-一）：主控台每帧广播比例 → 投影窗瞬时应用，像素级跟随
   useEffect(() => onScrollRatio(applyScrollRatio), []);
+
+  // Esc 退出投影：关闭本投影窗口，并通知主控台重置投影状态（isProjecting=false）。
+  // 仅关闭自身不够——主控台持有投影生命周期权威状态、且两窗口 store 相互独立，
+  // 必须发停止信号让主控台同步重置（见 use-panels-store.stopProjection）。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        publishProjectionStop();
+        if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+          void getCurrentWindow().close();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // 收到新译本列表时按需加载
   useEffect(() => {

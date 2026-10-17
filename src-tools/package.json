@@ -1,0 +1,18 @@
+{
+  "name": "bible-screening-import",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "圣经投影软件 · 本地经文导入模块：扫描 / 解压 / 解析（CUV·分卷JSON·USFM）→ SQLite",
+  "scripts": {
+    "import": "node import-bible.mjs",
+    "import:clean": "node import-bible.mjs --clean"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "better-sqlite3": "^11.10.0"
+  },
+  "engines": {
+    "node": ">=20.11"
+  }
+}

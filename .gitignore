@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+src-tauri/target/
+
+# Agent / local state
+.workbuddy/
+
+# Abandoned Electron attempt (superseded by Tauri)
+electron/
+
+# Logs
+*.log
+tauri-dev.log
+
+# Large binary design asset (kept locally only)
+圣经App界面设计 - 副本.pdf
+
+# OS cruft
+.DS_Store
+Thumbs.db

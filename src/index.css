@@ -1,0 +1,322 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================================
+   设计令牌 · Design Tokens
+   对标 fashion 参考：暖纸奶油浅色 + 赤褐强调；深色为暖褐黑（非中性灰）。
+   经文面板保持独立固定配色（--reader-*，不随全局明暗变化）。
+   ========================================================================== */
+
+@layer base {
+  :root {
+    --background: 40 30% 96%;        /* 暖纸奶油 */
+    --foreground: 24 12% 16%;        /* 暖褐黑 */
+    --card: 40 36% 98%;              /* 卡片暖白 */
+    --muted: 36 20% 92%;
+    --muted-foreground: 28 8% 40%;
+    --border: 34 16% 86% / 0.5;    /* 暖灰分割线（令牌自带 alpha：使用时禁加透明度修饰符） */
+    --accent: 8 58% 42%;             /* 赤褐 */
+    --accent-foreground: 40 30% 97%;
+    --highlight: 35 80% 44%;         /* 琥珀 */
+    --ring: 8 58% 42%;
+    --radius: 0.75rem;
+
+    /* 经文面板排版变量（面板独立固定配色：不随全局明暗主题变化，
+       阅读区 / 预览区 / 投影窗口共用同一套画布底色与排版，保证三屏所见即所得；
+       用户可在设置中覆盖） */
+    --reader-font-size: 18px;
+    --reader-line-height: 2;
+    --reader-text: hsl(40 14% 92%);
+    --reader-verse-number: hsl(220 10% 64%);
+    /* 标题颜色默认跟随经文颜色：保证与背景的对比度永远和经文一致
+       （避免自定义浅色背景时标题默认近白导致「标题一片空白」） */
+    --reader-title: var(--reader-text, hsl(40 14% 96%));
+    --reader-bg: #121212;
+    --reader-pad: 3rem;
+    --reader-font-family: theme('fontFamily.serif');
+    --reader-font-weight: 400;
+
+    color-scheme: light;
+  }
+
+  .dark {
+    --background: 24 12% 5%;          /* 暖褐深黑（加深面板黑度） */
+    --foreground: 36 18% 90%;
+    --card: 24 10% 7%;                /* 暖褐卡片（加深面板黑度） */
+    --muted: 24 8% 14%;
+    --muted-foreground: 32 10% 62%;  /* AA 对比度 */
+    --border: 0 0% 100% / 0.08;       /* 白线降噪：极淡分割线 */
+    --accent: 10 62% 52%;            /* 赤褐（深色下提亮） */
+    --accent-foreground: 40 30% 97%;
+    --highlight: 35 85% 58%;
+    --ring: 10 62% 52%;
+
+    color-scheme: dark;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    @apply bg-accent/25 text-foreground;
+  }
+}
+
+/* ============================================================================
+   纸张质感（阅读 / 投影区背景，由设置切换）
+   ========================================================================== */
+
+.paper-none {
+  background: var(--reader-bg);
+}
+
+/* 纸纹：柔和渐变 */
+.paper-gradient {
+  background:
+    radial-gradient(ellipse 90% 60% at 50% -10%, hsl(var(--accent) / 0.05), transparent 60%),
+    radial-gradient(ellipse 70% 50% at 85% 110%, hsl(var(--highlight) / 0.04), transparent 55%),
+    var(--reader-bg);
+}
+
+/* 纸纹：细噪点（内联 SVG feTurbulence，无外部资源；normal 混合对深浅底色均适用） */
+.paper-grain {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E"),
+    var(--reader-bg);
+}
+
+/* ============================================================================
+   细腻滚动条
+   ========================================================================== */
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 9999px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.5);
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ============================================================================
+   投影输出窗（/output）：隐藏滚动条，保持投影画面干净
+   —— 内容仍可被「主控台滚动同步 / 自动滚动」程序化滚动，仅视觉上隐藏滚动条。
+   作用域仅限投影窗根容器，主控台（/console）滚动条不受影响。
+   ========================================================================== */
+
+.projection-output,
+.projection-output * {
+  scrollbar-width: none;
+}
+.projection-output::-webkit-scrollbar,
+.projection-output *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* ============================================================================
+   经文排版基元（消费 CSS 变量）
+   ========================================================================== */
+
+.reader-text {
+  font-family: var(--reader-font-family);
+  font-size: var(--reader-font-size);
+  font-weight: var(--reader-font-weight);
+  line-height: var(--reader-line-height);
+  color: var(--reader-text);
+  letter-spacing: 0.02em;
+}
+
+/* 经文行容器（非交互镜像分支）：仅提供字号上下文，颜色由内部 .reader-text 承担。
+   内边距/负外边距必须与交互分支 VerseItem 的 `px-2 -mx-2 py-0.5` 完全一致，
+   否则投影窗（非交互）与主控台（交互）的节高不同 → 两屏可见内容范围对不上；
+   同样随画布等比缩放。 */
+.verse-line {
+  /* 必须块级：inline 元素的垂直 padding 不计入行盒高度，
+     会导致非交互屏（投影）节高比交互屏（主控台）少一份内边距 */
+  display: block;
+  font-size: var(--reader-font-size);
+  /* 行高必须落在「块级容器」上：行盒高度 = max(容器 strut, 内部行内元素)。
+     若容器不设行高，strut 取继承的 normal（≈1.5em），会把行距设置「吃掉」，
+     表现为行距滑块拖到 1.5 以下毫无反应（用户反馈：行距调整失效）。 */
+  line-height: var(--reader-line-height);
+  padding: calc(0.125rem * var(--canvas-scale, 1)) calc(0.5rem * var(--canvas-scale, 1));
+  margin: 0 calc(-0.5rem * var(--canvas-scale, 1));
+}
+
+/* 逐节排版的行容器（交互分支）：同样把行高落在块级容器上，并让节间距
+   由行距派生（与节内行距同一套韵律）。
+   注意：此前用 Tailwind 任意值 `my-[calc((var(--reader-line-height)-1)*...)]`
+   生成，calc() 里的 `-` 未加空格 → 生成的 CSS 非法、声明被整条丢弃，
+   节间距恒定不变。这里改为普通 CSS 规则，彻底规避该问题。 */
+.verse-block {
+  line-height: var(--reader-line-height);
+  margin-top: calc((var(--reader-line-height) - 1) * var(--reader-font-size) * 0.5);
+  margin-bottom: calc((var(--reader-line-height) - 1) * var(--reader-font-size) * 0.5);
+}
+
+/* ============================================================================
+   篇章标题入场动画（纯 CSS，不依赖 JS 动画库）
+   基准态即 opacity:1 —— 即使动画被禁用/中断标题也必然可见，
+   根治「标题一片空白」（此前 AnimatePresence 竞态会把它卡在 opacity:0）
+   ========================================================================== */
+
+@keyframes title-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.title-in {
+  animation: title-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title-in {
+    animation: none;
+  }
+}
+
+/* 多段面板：段与段之间加一条极淡的分割线（用户反馈：追加后续经文后，
+   各段之间需有可见但克制的分隔）。线宽/位置随画布等比缩放，三屏一致。 */
+.passage-divider {
+  height: calc(1.4 * 16px * var(--canvas-scale, 1));
+}
+
+.passage-divider::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid color-mix(in srgb, var(--reader-text) 12%, transparent);
+  transform: translateY(-50%);
+}
+
+/* ============================================================================
+   圣经版本水印（用户反馈：版本名不要显示得那么明显）
+   右下角、半透明、小号、不拦截指针事件、不可选中，绝不遮挡经文。
+   尺寸随画布等比缩放，保证三屏一致。
+   ========================================================================== */
+
+.version-watermark {
+  position: absolute;
+  right: calc(0.85rem * var(--canvas-scale, 1));
+  bottom: calc(0.55rem * var(--canvas-scale, 1));
+  z-index: 1;
+  font-family: theme('fontFamily.sans');
+  font-size: calc(10px * var(--canvas-scale, 1));
+  letter-spacing: 0.08em;
+  color: var(--reader-text);
+  opacity: 0.3;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* 选中整节强调色（反馈4-三）：双类名提升权重，压过 .reader-text 的默认色 */
+.reader-text.text-accent {
+  color: hsl(var(--accent));
+}
+
+.verse-number {
+  color: var(--reader-verse-number);
+  font-size: 0.62em;
+  font-weight: 500;
+  vertical-align: 0.28em;
+  margin-right: 0.4em;
+  user-select: none;
+  font-family: theme('fontFamily.sans');
+}
+
+/* 段落排版（反馈4-二）：多节成段，节号上标插入段内，首行缩进 2em，段间有距 */
+.para-text {
+  font-size: var(--reader-font-size);
+  /* 同 .verse-line：行高必须落在块级 <p> 上，否则 <p> 的 strut（继承 normal）
+     会压过内部行内 .reader-text 的行高，导致行距设置在段落模式下失效。 */
+  line-height: var(--reader-line-height);
+  text-indent: 2em;
+  margin-top: 0;
+  margin-bottom: 0.85em;
+}
+/* 段内节号右上标贴近文字（覆盖 .verse-number 的默认右边距） */
+.para-text .verse-number {
+  margin-right: 0.25em;
+}
+
+/* 选中整节强调色（与 .reader-text 同机制，双类名压过 .verse-number 默认色） */
+.verse-number.text-accent {
+  color: hsl(var(--accent));
+}
+
+/* 悬浮菜单毛玻璃 */
+.glass {
+  background: hsl(var(--card) / 0.86);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+}
+
+/* ============================================================================
+   macOS 材质（毛玻璃工具栏 / 半透明侧栏）
+   ========================================================================== */
+
+/* 统一工具栏：半透明 + 高饱和背景模糊（macOS NSWindow titlebar 材质） */
+.toolbar-glass {
+  background: hsl(var(--card) / 0.62);
+  backdrop-filter: blur(22px) saturate(1.8);
+  -webkit-backdrop-filter: blur(22px) saturate(1.8);
+}
+
+/* 侧栏 vibrancy：极淡的透出底层的材质 */
+.vibrancy {
+  background: hsl(var(--card) / 0.5);
+  backdrop-filter: blur(22px) saturate(1.6);
+  -webkit-backdrop-filter: blur(22px) saturate(1.6);
+}
+
+/* macOS 弹层材质：更厚、更柔 */
+.glass-strong {
+  background: hsl(var(--card) / 0.9);
+  backdrop-filter: blur(28px) saturate(1.9);
+  -webkit-backdrop-filter: blur(28px) saturate(1.9);
+  box-shadow:
+    0 0 0 0.5px hsl(var(--foreground) / 0.08),
+    0 12px 40px -8px hsl(var(--foreground) / 0.28),
+    0 4px 12px -4px hsl(var(--foreground) / 0.12);
+}
+
+/* 焦点可见性 */
+.focus-ring {
+  @apply outline-none ring-offset-0 focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-1 focus-visible:ring-offset-background;
+}

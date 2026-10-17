@@ -1,0 +1,144 @@
+{
+  "dataRoot": "E:\\workspace\\bible_screening\\bible_vasion",
+  "db": "E:\\workspace\\bible_screening\\resources\\bible.db",
+  "startedAt": "2026-10-12T12:56:47.513Z",
+  "finishedAt": "2026-10-12T12:56:48.904Z",
+  "versions": [
+    {
+      "code": "ccb",
+      "name": "当代译本",
+      "format": "usfm",
+      "ok": true,
+      "books": 66,
+      "chapters": 1189,
+      "verses": 31104,
+      "fatal": null,
+      "entries": []
+    },
+    {
+      "code": "cuv",
+      "name": "和合本",
+      "format": "cuv",
+      "ok": true,
+      "books": 66,
+      "chapters": 1185,
+      "verses": 30842,
+      "fatal": null,
+      "entries": [
+        {
+          "level": "warn",
+          "stage": "cuv",
+          "message": "Psalms 105:6 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "cuv",
+          "message": "Luke 1:80 文本为空，已跳过"
+        }
+      ]
+    },
+    {
+      "code": "kjv",
+      "name": "KJV",
+      "format": "book-json",
+      "ok": true,
+      "books": 66,
+      "chapters": 1189,
+      "verses": 31102,
+      "fatal": null,
+      "entries": []
+    },
+    {
+      "code": "niv",
+      "name": "NIV",
+      "format": "book-json",
+      "ok": true,
+      "books": 66,
+      "chapters": 1189,
+      "verses": 31087,
+      "fatal": null,
+      "entries": [
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/Acts.json 8:37 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/Acts.json 15:34 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/Acts.json 24:7 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/Acts.json 28:29 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/John.json 5:4 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/Luke.json 17:36 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/Luke.json 23:17 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/Mark.json 7:16 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/Mark.json 9:44 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/Mark.json 9:46 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/Mark.json 11:26 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/Mark.json 15:28 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/Matthew.json 17:21 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/Matthew.json 18:11 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/Matthew.json 23:14 文本为空，已跳过"
+        },
+        {
+          "level": "warn",
+          "stage": "book-json",
+          "message": "Bible-niv-main/Romans.json 16:24 文本为空，已跳过"
+        }
+      ]
+    }
+  ]
+}

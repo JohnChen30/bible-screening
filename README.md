@@ -1,4 +1,6 @@
 # 圣经投影与阅读软件 · Bible Screening
+<img width="2880" height="1704" alt="PixPin_2026-10-17_23-56-11" src="https://github.com/user-attachments/assets/54f62389-c467-4508-9edc-4902bd9eb987" />
+<img width="2880" height="1704" alt="PixPin_2026-10-17_23-55-47" src="https://github.com/user-attachments/assets/d25f5ad1-3e1b-4ebe-866f-96efcaba1e23" />
 
 一款面向讲台 / 查经场景的**专业级圣经投影与阅读软件**，基于 **Tauri v2 + React + TypeScript** 构建。桌面端为原生窗口，支持多显示器投影、逐节 / 分屏对照、划词高亮、多面板等。
 

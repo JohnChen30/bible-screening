@@ -82,8 +82,14 @@ export const useBibleStore = create<BibleState>((set, get) => ({
   setSelection: (patch) => set((s) => ({ selection: { ...s.selection, ...patch } })),
 
   setActiveVersionIds: (ids) => {
-    set({ activeVersionIds: ids });
-    void Promise.all(ids.map((code) => get().ensureVersion(code)));
+    // 最多同时启用 2 个译本（对照只支持两版）
+    const next = ids.slice(0, 2);
+    set((s) => ({
+      activeVersionIds: next,
+      // 不足 2 个译本时，对照模式自动退回单版
+      ...(next.length < 2 && s.compareMode !== 'single' ? { compareMode: 'single' as CompareMode } : {}),
+    }));
+    void Promise.all(next.map((code) => get().ensureVersion(code)));
   },
 
   /**
@@ -96,8 +102,14 @@ export const useBibleStore = create<BibleState>((set, get) => ({
       const has = s.activeVersionIds.includes(code);
       if (has) {
         if (s.activeVersionIds.length <= 1) return s; // 至少保留一个译本
-        return { activeVersionIds: s.activeVersionIds.filter((c) => c !== code) };
+        const next = s.activeVersionIds.filter((c) => c !== code);
+        return {
+          activeVersionIds: next,
+          // 只剩 1 个译本时，对照模式自动退回单版
+          ...(next.length < 2 && s.compareMode !== 'single' ? { compareMode: 'single' as CompareMode } : {}),
+        };
       }
+      if (s.activeVersionIds.length >= 2) return s; // 最多 2 个译本
       return { activeVersionIds: [...s.activeVersionIds, code] };
     });
     void get().ensureVersion(code);

@@ -5,12 +5,12 @@ export type Theme = 'light' | 'dark';
 const KEY = 'bible-theme';
 
 export function getTheme(): Theme {
+  // 默认主题：浅色（用户保存过偏好时以保存值为准）
   if (typeof localStorage !== 'undefined') {
     const saved = localStorage.getItem(KEY);
     if (saved === 'light' || saved === 'dark') return saved;
   }
-  if (typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: light)').matches) return 'light';
-  return 'dark';
+  return 'light';
 }
 
 export function setTheme(theme: Theme): void {

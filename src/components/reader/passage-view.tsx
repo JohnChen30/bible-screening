@@ -14,8 +14,9 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { mergeHighlightsAcrossVersions } from '@/lib/highlight-merge';
 import { useBibleStore } from '@/stores/use-bible-store';
-import { highlightsOf, useHighlightsStore, verseKey } from '@/stores/use-highlights-store';
+import { highlightsOf, useHighlightsStore } from '@/stores/use-highlights-store';
 import { useTextSelectionStore, selectionFlags, type PendingRange } from '@/stores/use-text-selection-store';
 import { highlightKey, usePanelsStore } from '@/stores/use-panels-store';
 import {
@@ -26,13 +27,10 @@ import {
   registerScrollContainer,
   watchScroll,
 } from '@/lib/scroll-sync';
-import type { BookMeta, CompareMode, PassageItem, TextHighlight, TitleMode, VersionData } from '@/lib/types';
+import type { BookMeta, CompareMode, PassageItem, TitleMode, VersionData } from '@/lib/types';
 import { VerseItem } from './verse-item';
 import { VerseText } from './verse-text';
 import { SelectionCopyBar } from './selection-copy-bar';
-
-/** 稳定空数组引用（避免每次渲染新引用） */
-const EMPTY_HIGHLIGHTS: TextHighlight[] = [];
 
 /**
  * 自动滚动速度 → 每帧像素（用户反馈：原速度太快，人眼跟不上，故整体大幅降速）
@@ -134,6 +132,11 @@ interface PassageViewProps {
   interactive?: boolean;
   /** 已高亮的节 ID 集合（复合键 bookId:chapter:verse） */
   highlightedVerses?: string[];
+  /**
+   * 参与「同节标注合并」的译本集合。分屏 / 逐节对照时传入全部版本，
+   * 让同一面板同一节的高亮/下划线在各窗格同步显示。不传则等于 versionCodes。
+   */
+  highlightVersionCodes?: string[];
   /** 强调色（选中经文的文字/节号颜色；可在工具栏自由设置，三屏同步） */
   selectColor?: string;
   /**
@@ -269,6 +272,7 @@ function buildSection(
   versionCodes: string[],
   t: PassageTypography,
   header: boolean,
+  isEn: boolean,
 ): Section {
   const book = books.find((b) => b.id === p.bookId);
   const chapter = p.chapter;
@@ -295,9 +299,12 @@ function buildSection(
   const cnRange = rangeSuffix ? (rangeSuffix === ':1' ? '1节' : `${rangeSuffix.slice(1)}节`) : '';
   const title = !book
     ? ''
-    : t.titleFormat === 'reference'
-      ? `${book.nameCn} ${chapter}${rangeSuffix}`
-      : `${book.nameCn} 第${chapter}章${cnRange ? ` ${cnRange}` : ''}`;
+    : isEn
+      // 英文译本：西式引用标题（Genesis 1:1 / Genesis 1:1-10）
+      ? `${book.nameEn} ${chapter}${rangeSuffix}`
+      : t.titleFormat === 'reference'
+        ? `${book.nameCn} ${chapter}${rangeSuffix}`
+        : `${book.nameCn} 第${chapter}章${cnRange ? ` ${cnRange}` : ''}`;
   const titleMode: TitleMode = t.titleMode ?? 'inline';
   const showTitle = header && titleMode !== 'hidden';
   const inlineTitle = showTitle && titleMode === 'inline';
@@ -421,6 +428,7 @@ export function PassageView({
   typography: t,
   interactive = false,
   highlightedVerses = [],
+  highlightVersionCodes,
   selectColor,
   panelId,
   onToggleHighlight,
@@ -434,6 +442,10 @@ export function PassageView({
   const books = useBibleStore((s) => s.books);
   const dataCache = useBibleStore((s) => s.dataCache);
   const getVersionMeta = useBibleStore((s) => s.getVersionMeta);
+  /** 参与同节标注合并的译本集合（分屏时 = 全部版本） */
+  const hCodes = highlightVersionCodes ?? versionCodes;
+  /** 标题语言跟随本窗格首个译本（分屏两栏各自语言；英文译本用英文标题） */
+  const isEnSection = (getVersionMeta(versionCodes[0])?.language ?? 'zh-Hans').startsWith('en');
 
   const parentRef = useRef<HTMLDivElement>(null);
   useAutoScroll(parentRef, autoScroll);
@@ -441,9 +453,9 @@ export function PassageView({
   useCaptureTextSelection(parentRef, interactive);
 
   const sections = useMemo(
-    () => passages.map((p) => buildSection(p, books, dataCache, versionCodes, t, header)),
+    () => passages.map((p) => buildSection(p, books, dataCache, versionCodes, t, header, isEnSection)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [passages, books, dataCache, versionCodes.join(','), t.layoutMode, t.titleFormat, t.titleMode, t.fontSize, t.titleAlign, t.margin, header],
+    [passages, books, dataCache, versionCodes.join(','), t.layoutMode, t.titleFormat, t.titleMode, t.fontSize, t.titleAlign, t.margin, header, isEnSection],
   );
 
   /**
@@ -568,6 +580,7 @@ export function PassageView({
                       stacked={mode === 'verse' && versionCodes.length > 1}
                       interactive={interactive}
                       highlightedVerses={highlightedVerses}
+                      highlightVersionCodes={hCodes}
                       selectColor={selectColor}
                       panelId={panelId}
                       onToggleHighlight={onToggleHighlight}
@@ -579,6 +592,7 @@ export function PassageView({
                       stacked={mode === 'verse' && versionCodes.length > 1}
                       interactive={interactive}
                       highlightedVerses={highlightedVerses}
+                      highlightVersionCodes={hCodes}
                       selectColor={selectColor}
                       panelId={panelId}
                       onToggleHighlight={onToggleHighlight}
@@ -696,6 +710,8 @@ function useCaptureTextSelection(containerRef: React.RefObject<HTMLDivElement | 
 interface VerseBlockProps {
   row: VerseRow;
   typography: PassageTypography;
+  /** 参与同节标注合并的译本集合（分屏 / 对照时 = 全部版本） */
+  highlightVersionCodes?: string[];
   /** 逐节对照：同节多译本垂直堆叠 */
   stacked: boolean;
   interactive: boolean;
@@ -709,7 +725,7 @@ interface VerseBlockProps {
   onToggleHighlight?: (verse: number, bookId?: number, chapter?: number) => void;
 }
 
-function VerseBlock({ row, typography: t, stacked, interactive, highlightedVerses, selectColor, panelId, onToggleHighlight }: VerseBlockProps) {
+function VerseBlock({ row, typography: t, stacked, interactive, highlightedVerses, highlightVersionCodes, selectColor, panelId, onToggleHighlight }: VerseBlockProps) {
   const godTermSwap = useBibleStore((s) => s.godTermSwap);
   // 高亮按面板隔离：投影窗以 payload.activePanelId（panelId 显式传入）为准，
   // 主控台回退到本窗口 store 的 activePanelId——避免两窗口面板 id 不一致时读错桶
@@ -745,6 +761,7 @@ function VerseBlock({ row, typography: t, stacked, interactive, highlightedVerse
                   text={cell.text}
                   showVerseNumber={showNumber}
                   highlighted={isHL}
+                  highlightVersionCodes={highlightVersionCodes}
                   selectColor={selectColor}
                   onActivate={() => onToggleHighlight?.(row.verse, bookId, chapter)}
                 />
@@ -759,7 +776,7 @@ function VerseBlock({ row, typography: t, stacked, interactive, highlightedVerse
                     text={cell.text}
                     godTerm={useBibleStore.getState().versions.find((v) => v.code === cell.code)?.godTerm ?? '神'}
                     swap={godTermSwap}
-                    highlights={highlightsMap[verseKey(cell.code, bookId, chapter, row.verse)] ?? EMPTY_HIGHLIGHTS}
+                    highlights={mergeHighlightsAcrossVersions(highlightsMap, highlightVersionCodes ?? [cell.code], cell.code, bookId, chapter, row.verse)}
                     highlighted={isHL}
                     selectColor={selectColor}
                     vmeta={{ bookId, chapter, verse: row.verse, versionCode: cell.code }}
@@ -781,6 +798,8 @@ function VerseBlock({ row, typography: t, stacked, interactive, highlightedVerse
 interface ParaBlockProps {
   row: ParaRow;
   typography: PassageTypography;
+  /** 参与同节标注合并的译本集合（分屏 / 对照时 = 全部版本） */
+  highlightVersionCodes?: string[];
   /** 逐节对照：同节多译本各自成段 */
   stacked: boolean;
   interactive: boolean;
@@ -793,7 +812,7 @@ interface ParaBlockProps {
   onToggleHighlight?: (verse: number, bookId?: number, chapter?: number) => void;
 }
 
-function ParaBlock({ row, typography: t, stacked, interactive, highlightedVerses, selectColor, panelId, onToggleHighlight }: ParaBlockProps) {
+function ParaBlock({ row, typography: t, stacked, interactive, highlightedVerses, highlightVersionCodes, selectColor, panelId, onToggleHighlight }: ParaBlockProps) {
   const godTermSwap = useBibleStore((s) => s.godTermSwap);
   // 高亮按面板隔离：投影窗以 payload.activePanelId（panelId 显式传入）为准，
   // 主控台回退到本窗口 store 的 activePanelId——避免两窗口面板 id 不一致时读错桶
@@ -829,6 +848,7 @@ function ParaBlock({ row, typography: t, stacked, interactive, highlightedVerses
                       showVerseNumber={showNumber}
                       inline
                       highlighted={isHL(part.verse)}
+                      highlightVersionCodes={highlightVersionCodes}
                       selectColor={selectColor}
                       onActivate={() => onToggleHighlight?.(part.verse, bookId, chapter)}
                     />
@@ -843,7 +863,7 @@ function ParaBlock({ row, typography: t, stacked, interactive, highlightedVerses
                         text={part.text}
                         godTerm={useBibleStore.getState().versions.find((v) => v.code === cell.code)?.godTerm ?? '神'}
                         swap={godTermSwap}
-                        highlights={highlightsMap[verseKey(cell.code, bookId, chapter, part.verse)] ?? EMPTY_HIGHLIGHTS}
+                        highlights={mergeHighlightsAcrossVersions(highlightsMap, highlightVersionCodes ?? [cell.code], cell.code, bookId, chapter, part.verse)}
                         highlighted={isHL(part.verse)}
                         selectColor={selectColor}
                         vmeta={{ bookId, chapter, verse: part.verse, versionCode: cell.code }}

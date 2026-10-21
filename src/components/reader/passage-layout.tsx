@@ -7,6 +7,7 @@
  *   single：单译本。
  */
 
+import { Fragment } from 'react';
 import { cn } from '@/lib/utils';
 import type { CompareMode, PassageItem } from '@/lib/types';
 import { PassageView, type PassageTypography } from './passage-view';
@@ -60,24 +61,41 @@ export function PassageLayout({
     return (
       <div className={cn('flex h-full min-h-0', className)}>
         {versionCodes.slice(0, 2).map((code, i) => (
-          <div key={code} className={cn('flex min-h-0 min-w-0 flex-1 flex-col', i === 0 && 'border-r border-border')}>
-            <PassageView
-              passages={passages}
-              versionCodes={[code]}
-              mode="single"
-              typography={typography}
-              interactive={interactive}
-              highlightedVerses={highlightedVerses}
-              selectColor={selectColor}
-              panelId={panelId}
-              onToggleHighlight={onToggleHighlight}
-              scrollToVerse={scrollToVerse}
-              autoScroll={autoScroll}
-              scrollSync={scrollSync}
-              scrollIndex={i}
-              className="h-full"
-            />
-          </div>
+          <Fragment key={code}>
+            {/* 中间分隔线：显式元素而非 border——border 用主题 --border，在投影的浅色画布上
+                （深色主题下是 8% 白）几乎不可见，导致「投影没有中间线」。这里取经文色的
+                16% 混合、并随画布等比缩放，预览与投影逐像素一致。 */}
+            {i > 0 && (
+              <div
+                aria-hidden
+                className="shrink-0 self-stretch"
+                style={{
+                  width: 'calc(1px * var(--canvas-scale, 1))',
+                  background: 'color-mix(in srgb, var(--reader-text) 16%, transparent)',
+                }}
+              />
+            )}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <PassageView
+                passages={passages}
+                versionCodes={[code]}
+                mode="single"
+                typography={typography}
+                interactive={interactive}
+                highlightedVerses={highlightedVerses}
+                // 分屏：两栏共享同一批译本的高亮，保证同一面板同一节的标注同步
+                highlightVersionCodes={versionCodes}
+                selectColor={selectColor}
+                panelId={panelId}
+                onToggleHighlight={onToggleHighlight}
+                scrollToVerse={scrollToVerse}
+                autoScroll={autoScroll}
+                scrollSync={scrollSync}
+                scrollIndex={i}
+                className="h-full"
+              />
+            </div>
+          </Fragment>
         ))}
       </div>
     );
@@ -91,6 +109,7 @@ export function PassageLayout({
       typography={typography}
       interactive={interactive}
       highlightedVerses={highlightedVerses}
+      highlightVersionCodes={versionCodes}
       selectColor={selectColor}
       panelId={panelId}
       onToggleHighlight={onToggleHighlight}

@@ -13,10 +13,12 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { animate, motion, Reorder, useMotionValue } from 'framer-motion';
+import { animate, motion, useMotionValue } from 'framer-motion';
 import {
+  ArrowLeftRight,
   BookOpenText,
   Check,
+  ChevronDown,
   Columns2,
   Moon,
   PanelLeftClose,
@@ -25,11 +27,11 @@ import {
   Plus,
   Square,
   Sun,
-  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getTheme, setTheme, toggleTheme, type Theme } from '@/lib/theme';
 import { onSyncRequest, subscribeProjectionStop } from '@/lib/projection-channel';
+import { copySelectedScripture, hasCopyableSelection } from '@/lib/copy-selection';
 import { MillerColumns } from '@/components/miller-columns/miller-columns';
 import { ReaderPane } from '@/components/reader/reader-pane';
 import { PanelCanvas } from '@/components/reader/panel-canvas';
@@ -237,6 +239,8 @@ export function ConsolePage() {
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
       // 设置小窗等浮层打开时，快捷键（含 Esc）不外溢：关小窗不应退出投影
       if (target.closest?.('[role="dialog"]')) return;
+      // 带修饰键的组合键（如 Ctrl+C 复制经文）不走单键快捷键，避免误触「清屏」
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       const ps = usePanelsStore.getState();
       if (!ps.isProjecting) return;
       if (e.key === 'b' || e.key === 'B') ps.toggleBlackout();
@@ -245,6 +249,23 @@ export function ConsolePage() {
         // ESC 退出投影（已无浏览器全屏，故 ESC 直接停投影）
         ps.stopProjection();
       }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  /* Ctrl / Cmd + C：复制选中的经文（与底部「复制经文」按钮同一逻辑） */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      if (e.key.toLowerCase() !== 'c') return;
+      const t = e.target as HTMLElement | null;
+      // 输入框 / 可编辑区域：交给浏览器原生复制
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      // 没有经文选区时也交给浏览器（保持原生复制可用）
+      if (!hasCopyableSelection()) return;
+      e.preventDefault();
+      void copySelectedScripture();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -362,7 +383,7 @@ export function ConsolePage() {
       {/* ============ 主区 ============ */}
       <main className="relative flex min-w-0 flex-1 flex-col">
         {/* 顶栏 */}
-        <header className="toolbar-glass relative z-20 flex h-12 shrink-0 items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-border px-3 [&>*]:shrink-0">
+        <header className="toolbar-glass relative z-20 flex h-12 shrink-0 items-center gap-1.5 whitespace-nowrap border-b border-border px-3">
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -380,70 +401,30 @@ export function ConsolePage() {
             </Tooltip>
           </TooltipProvider>
 
-          {/* 版本 chips（可拖拽排序） */}
-          <Reorder.Group
-            axis="x"
-            values={activeVersionIds}
+          {/* 译本（合并为紧凑控件，最多 2 个） */}
+          <VersionSwitcher
+            versions={store.versions}
+            active={activeVersionIds}
+            onToggle={toggleVersion}
             onReorder={setActiveVersionIds}
-            className="flex items-center gap-1.5"
-            as="div"
-          >
-            {activeVersionIds.map((code) => {
-              const meta = store.versions.find((v) => v.code === code);
-              return (
-                <Reorder.Item
-                  key={code}
-                  value={code}
-                  dragListener={activeVersionIds.length > 1}
-                  whileDrag={{ scale: 1.06, zIndex: 10 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 32 }}
-                  className={cn(
-                    'flex h-7 cursor-grab items-center gap-1 rounded-md bg-foreground/[0.06] px-2.5 text-xs font-medium shadow-[0_1px_2px_hsl(var(--foreground)/0.05)] active:cursor-grabbing',
-                    activeVersionIds.length === 1 && 'cursor-default',
-                  )}
-                >
-                  {meta?.name ?? code}
-                  {activeVersionIds.length > 1 && (
-                    <button
-                      onClick={() => toggleVersion(code)}
-                      className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-foreground"
-                      aria-label={`移除 ${meta?.name}`}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </Reorder.Item>
-              );
-            })}
-          </Reorder.Group>
+          />
 
-          {/* 添加译本 */}
-          <AddVersionPopover versions={store.versions} active={activeVersionIds} onAdd={toggleVersion} />
-
-          {/* 对照模式（macOS 分段控件） */}
-          <div className="ml-1 flex items-center gap-0.5 rounded-[7px] bg-foreground/[0.06] p-[2px]">
-            {MODES.map((m) => (
-              <button
-                key={m.value}
-                onClick={() => setCompareMode(m.value)}
-                className={cn(
-                  'flex h-6 items-center gap-1 rounded-[5px] px-2.5 text-[11px] font-medium transition-all focus-ring',
-                  compareMode === m.value
-                    ? 'bg-card text-foreground shadow-[0_1px_3px_hsl(var(--foreground)/0.12),0_0_0_0.5px_hsl(var(--foreground)/0.06)]'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                <m.icon className="h-3 w-3" strokeWidth={1.8} />
-                {m.label}
-              </button>
-            ))}
-          </div>
+          {/* 对照模式：点「逐节/分屏」时若不足 2 个译本，弹出译本选择，选完直接对照 */}
+          <ModeBar
+            mode={compareMode}
+            onMode={setCompareMode}
+            versions={store.versions}
+            active={activeVersionIds}
+            onAddVersion={toggleVersion}
+          />
 
           {/* 标题显示方式（常驻顶部 / 随文滚动 / 不显示）— 常驻可见 */}
           <TitleModeSwitch className="ml-1" />
 
-          {/* 关键词检索（顶栏空白处居中；结果窗在其下方展开） */}
-          <SearchBox />
+          {/* 关键词检索（弹性区域：窄窗口时收缩，避免把右侧按钮挤出可视区） */}
+          <div className="ml-auto flex min-w-0 flex-1 items-center justify-center px-1">
+            <SearchBox />
+          </div>
 
           <div className="flex items-center gap-1.5">
             <Button variant="ghost" size="icon-sm" onClick={onToggleTheme} aria-label="切换主题">
@@ -520,57 +501,212 @@ function ReaderArea() {
 }
 
 /**
- * 添加译本：改为 **顶层浮层**（Radix Popover，portal 进 #app-root-fs 根容器）。
- *
- * 原先是顶栏内的 `absolute` 定位元素，而顶栏带 `overflow-x-auto`——按 CSS 规范，
- * 一个轴的 overflow 非 visible 时另一轴的 visible 会被计算成 auto，于是纵向也被裁剪：
- * 剩余译本列表被挤在第一栏里、必须滚动才看得见。
- * portal 进根容器后脱离该裁剪上下文，浮窗正常置顶显示；且根容器即全屏元素，
- * 全屏下也不会被浏览器隐藏（此前「排版设置」的同类修复）。
+ * 译本选择：合并成一个紧凑控件（此前每个译本各占一个 chip，2 个译本就把顶栏挤到
+ * 横向滚动、右侧「投影」等按钮被遮挡）。最多 2 个；两版时可「交换主译本」，
+ * 决定逐节 / 分屏里排在前面的一栏。
  */
-function AddVersionPopover({
+function VersionSwitcher({
   versions,
   active,
-  onAdd,
+  onToggle,
+  onReorder,
 }: {
   versions: { code: string; name: string }[];
   active: string[];
-  onAdd: (code: string) => void;
+  onToggle: (code: string) => void;
+  onReorder: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const names = active.map((c) => versions.find((v) => v.code === c)?.name ?? c);
+  const label = names.length ? names.join(' · ') : '选择译本';
+  const canAdd = active.length < 2;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="选择译本"
+          className="flex h-7 min-w-0 max-w-[200px] items-center gap-1.5 rounded-md bg-foreground/[0.06] px-2.5 text-xs font-medium text-foreground/90 transition-colors hover:bg-foreground/[0.1] focus-ring"
+        >
+          <BookOpenText className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={1.8} />
+          <span className="truncate">{label}</span>
+          <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground/70" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" sideOffset={6} className="glass-strong z-[100] w-56 rounded-[10px] p-1.5">
+        <div className="px-2 pb-1 pt-1.5 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/60">
+          译本（最多 2 个）
+        </div>
+        <div className="scrollbar-thin max-h-[46vh] overflow-y-auto">
+          {versions.map((v) => {
+            const on = active.includes(v.code);
+            const disabled = !on && !canAdd;
+            return (
+              <button
+                key={v.code}
+                type="button"
+                disabled={disabled}
+                onClick={() => !disabled && onToggle(v.code)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors',
+                  on ? 'text-accent' : 'text-foreground/80',
+                  disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-foreground/[0.06] hover:text-foreground',
+                )}
+              >
+                <span
+                  className={cn(
+                    'flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border',
+                    on ? 'border-accent bg-accent text-accent-foreground' : 'border-border',
+                  )}
+                >
+                  {on && <Check className="h-3 w-3" strokeWidth={3} />}
+                </span>
+                <span className="truncate">{v.name}</span>
+              </button>
+            );
+          })}
+        </div>
+        {active.length === 2 && (
+          <div className="mt-1 border-t border-border pt-1">
+            <button
+              type="button"
+              onClick={() => onReorder([active[1], active[0]])}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-foreground/80 transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+            >
+              <ArrowLeftRight className="h-3.5 w-3.5" strokeWidth={1.8} />
+              交换主译本
+            </button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * 对照模式分段控件。
+ * 点「逐节对照 / 分屏对照」时：已有 2 个译本 → 直接切换；不足 2 个 → 弹出译本选择，
+ * 选完立即进入对照（不再需要先手动加译本）。
+ */
+function ModeBar({
+  mode,
+  onMode,
+  versions,
+  active,
+  onAddVersion,
+}: {
+  mode: CompareMode;
+  onMode: (m: CompareMode) => void;
+  versions: { code: string; name: string }[];
+  active: string[];
+  onAddVersion: (code: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 rounded-[7px] bg-foreground/[0.06] p-[2px]">
+      {MODES.map((m) => {
+        const activeNow = mode === m.value;
+        const cls = cn(
+          'flex h-6 items-center gap-1 rounded-[5px] px-2 text-[11px] font-medium transition-all focus-ring',
+          activeNow
+            ? 'bg-card text-foreground shadow-[0_1px_3px_hsl(var(--foreground)/0.12),0_0_0_0.5px_hsl(var(--foreground)/0.06)]'
+            : 'text-muted-foreground hover:text-foreground',
+        );
+        if (m.value === 'single') {
+          return (
+            <button key={m.value} type="button" onClick={() => onMode('single')} className={cls} aria-label={m.label}>
+              <m.icon className="h-3 w-3" strokeWidth={1.8} />
+              {m.label}
+            </button>
+          );
+        }
+        return (
+          <CompareModeItem
+            key={m.value}
+            m={m}
+            activeNow={activeNow}
+            cls={cls}
+            canCompare={active.length >= 2}
+            versions={versions}
+            active={active}
+            onAddVersion={onAddVersion}
+            onMode={onMode}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function CompareModeItem({
+  m,
+  activeNow,
+  cls,
+  canCompare,
+  versions,
+  active,
+  onAddVersion,
+  onMode,
+}: {
+  m: { value: CompareMode; label: string; icon: typeof BookOpenText };
+  activeNow: boolean;
+  cls: string;
+  canCompare: boolean;
+  versions: { code: string; name: string }[];
+  active: string[];
+  onAddVersion: (code: string) => void;
+  onMode: (m: CompareMode) => void;
 }) {
   const [open, setOpen] = useState(false);
   const remaining = versions.filter((v) => !active.includes(v.code));
-  if (!remaining.length) return null;
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-    <PopoverTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="添加译本"
-            className="text-muted-foreground"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          sideOffset={6}
-          className="glass-strong z-[100] max-h-[60vh] w-44 overflow-y-auto rounded-[10px] p-1"
-        >
-          {remaining.map((v) => (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) {
+          setOpen(false);
+          return;
+        }
+        // 已有 2 个译本：直接切到该对照模式，不弹窗
+        if (canCompare) {
+          onMode(m.value);
+          setOpen(false);
+        } else {
+          setOpen(true);
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button type="button" className={cls} aria-label={m.label} aria-pressed={activeNow}>
+          <m.icon className="h-3 w-3" strokeWidth={1.8} />
+          {m.label}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" sideOffset={6} className="glass-strong z-[100] w-52 rounded-[10px] p-1.5">
+        <div className="px-2 pb-1 pt-1.5 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/60">
+          选择对照译本
+        </div>
+        {remaining.length === 0 ? (
+          <div className="px-2 py-2 text-xs text-muted-foreground/70">没有其他译本可选</div>
+        ) : (
+          remaining.map((v) => (
             <button
               key={v.code}
+              type="button"
               onClick={() => {
-                onAdd(v.code);
+                onAddVersion(v.code);
+                onMode(m.value);
                 setOpen(false);
               }}
-              className="flex w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-foreground/80 transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+              className="flex w-full rounded-lg px-2 py-1.5 text-left text-xs text-foreground/80 transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
             >
               {v.name}
             </button>
-          ))}
-        </PopoverContent>
-      </Popover>
+          ))
+        )}
+        <div className="px-2 pb-1 pt-1 text-[10px] text-muted-foreground/50">选择后立即进入{m.label}</div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

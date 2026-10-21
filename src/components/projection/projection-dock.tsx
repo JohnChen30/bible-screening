@@ -96,43 +96,98 @@ export function ProjectionDock() {
     clearHighlightedVerses();
   };
 
-  /** 高亮目标区间：光标选区优先（按版本+节定位）；否则整节已选经文（start0/end len） */
-  const targets: { key: string; start: number; end: number }[] = hasPending
+  /** 光标拖选的目标区间（按「版本 + 节」定位，逐版本应用） */
+  const rangeTargets: { key: string; start: number; end: number }[] = hasPending
     ? pendingRanges.map((r) => ({ key: verseKey(r.versionCode, r.bookId, r.chapter, r.verse), start: r.start, end: r.end }))
-    : hasSel
-      ? highlightedVerses.map((k) => {
-          const [b, c, v] = k.split(':').map(Number);
-          return { key: verseKey(primary, b, c, v), start: 0, end: verseLengthOf(primary, b, c, v) };
-        })
-      : [];
-  const hasTarget = targets.length > 0;
+    : [];
+  const hasTarget = rangeTargets.length > 0 || hasSel;
 
-  /** 5 色调色盘：作用于「目标区间」。再点同色 → 取消该高亮（切换） */
+  /**
+   * 整节目标：跨「所有活动译本」同步写入 / 切换。
+   * 分屏 / 逐节对照下，同一节会渲染在多个译本上；若只写当前主译本，另一栏就不会出现标注。
+   * 这里对每个译本按自身节长度各写一份整节区间（0..len），并统一判定：
+   * 任一同节整节标注即视为已存在 → 全局取消；否则全部设为该效果。这样两栏能同开同关。
+   */
+  const applyVerseLevel = (effect: 'highlight' | 'underline', bg: string | null) => {
+    const codes = activeVersionIds.length ? activeVersionIds : primary ? [primary] : [];
+    for (const k of highlightedVerses) {
+      const [b, c, v] = k.split(':').map(Number);
+      const entries = codes.map((vc) => {
+        const key = verseKey(vc, b, c, v);
+        const len = verseLengthOf(vc, b, c, v);
+        const list = highlightsMap[key] ?? EMPTY_HIGHLIGHTS;
+        const whole = list.find((h) => h.start === 0 && h.end === len);
+        return { vc, key, len, whole };
+      });
+      const wholes = entries.filter((e) => e.whole);
+
+      if (effect === 'highlight') {
+        const allSame = wholes.length > 0 && wholes.every((e) => e.whole!.color === bg);
+        if (allSame) {
+          // 再点同色 → 取消所有译本上的整节高亮
+          wholes.forEach((e) => removeHighlight(panelId, e.key, e.whole!.id));
+        } else {
+          for (const e of entries) {
+            if (e.whole) {
+              if (e.whole.color !== bg) updateHighlight(panelId, e.key, e.whole.id, { color: bg });
+            } else {
+              addHighlight(panelId, e.key, { start: 0, end: e.len, color: bg, underline: false });
+            }
+          }
+        }
+      } else {
+        const anyUnderline = wholes.some((e) => e.whole!.underline);
+        if (anyUnderline) {
+          wholes
+            .filter((e) => e.whole!.underline)
+            .forEach((e) => {
+              if (e.whole!.color) updateHighlight(panelId, e.key, e.whole!.id, { underline: false });
+              else removeHighlight(panelId, e.key, e.whole!.id);
+            });
+        } else {
+          for (const e of entries) {
+            if (e.whole) updateHighlight(panelId, e.key, e.whole.id, { underline: true });
+            else addHighlight(panelId, e.key, { start: 0, end: e.len, color: null, underline: true });
+          }
+        }
+      }
+    }
+  };
+
+  /** 5 色调色盘：作用于「文字选区」或「整节已选经文」。再点同色 → 取消该高亮（切换） */
   const applyHighlight = (color: string) => {
     if (!primary || !hasTarget) return;
     // 色板存底色 hex，渲染时按固定不透明度叠加（color-mix），不改文字颜色
     const bg = highlightBg(color);
-    for (const t of targets) {
-      const existing = highlightsMap[t.key] ?? EMPTY_HIGHLIGHTS;
-      const tgt = existing.find((h) => h.start === t.start && h.end === t.end);
-      if (tgt && tgt.color === bg) removeHighlight(panelId, t.key, tgt.id);
-      else if (tgt) updateHighlight(panelId, t.key, tgt.id, { color: bg });
-      else addHighlight(panelId, t.key, { start: t.start, end: t.end, color: bg, underline: false });
+    if (rangeTargets.length > 0) {
+      for (const t of rangeTargets) {
+        const existing = highlightsMap[t.key] ?? EMPTY_HIGHLIGHTS;
+        const tgt = existing.find((h) => h.start === t.start && h.end === t.end);
+        if (tgt && tgt.color === bg) removeHighlight(panelId, t.key, tgt.id);
+        else if (tgt) updateHighlight(panelId, t.key, tgt.id, { color: bg });
+        else addHighlight(panelId, t.key, { start: t.start, end: t.end, color: bg, underline: false });
+      }
+    } else {
+      applyVerseLevel('highlight', bg);
     }
     clearSelectionAfterApply();
   };
 
-  /** 下划线：作用于目标区间。再点 → 取消下划线（切换） */
+  /** 下划线：作用于「文字选区」或「整节已选经文」。再点 → 取消下划线（切换） */
   const applyUnderline = () => {
     if (!primary || !hasTarget) return;
-    for (const t of targets) {
-      const existing = highlightsMap[t.key] ?? EMPTY_HIGHLIGHTS;
-      const tgt = existing.find((h) => h.start === t.start && h.end === t.end);
-      if (!tgt) addHighlight(panelId, t.key, { start: t.start, end: t.end, color: null, underline: true });
-      else if (tgt.underline) {
-        if (tgt.color) updateHighlight(panelId, t.key, tgt.id, { underline: false });
-        else removeHighlight(panelId, t.key, tgt.id);
-      } else updateHighlight(panelId, t.key, tgt.id, { underline: true });
+    if (rangeTargets.length > 0) {
+      for (const t of rangeTargets) {
+        const existing = highlightsMap[t.key] ?? EMPTY_HIGHLIGHTS;
+        const tgt = existing.find((h) => h.start === t.start && h.end === t.end);
+        if (!tgt) addHighlight(panelId, t.key, { start: t.start, end: t.end, color: null, underline: true });
+        else if (tgt.underline) {
+          if (tgt.color) updateHighlight(panelId, t.key, tgt.id, { underline: false });
+          else removeHighlight(panelId, t.key, tgt.id);
+        } else updateHighlight(panelId, t.key, tgt.id, { underline: true });
+      }
+    } else {
+      applyVerseLevel('underline', null);
     }
     clearSelectionAfterApply();
   };
@@ -148,10 +203,21 @@ export function ProjectionDock() {
   const hasAnyFormat =
     highlightedVerses.length > 0 || Object.keys(highlightsMap).length > 0 || hasPending;
 
+  /** 按钮按下态判定用的目标：选区逐版本；整节则展开到所有译本（与跨版本应用保持一致） */
+  const stateTargets: { key: string; start: number; end: number }[] = hasPending
+    ? rangeTargets
+    : hasSel
+      ? highlightedVerses.flatMap((k) => {
+          const [b, c, v] = k.split(':').map(Number);
+          const codes = activeVersionIds.length ? activeVersionIds : primary ? [primary] : [];
+          return codes.map((vc) => ({ key: verseKey(vc, b, c, v), start: 0, end: verseLengthOf(vc, b, c, v) }));
+        })
+      : [];
+
   /** 目标区间是否带下划线 → 按钮按下态 */
   const anyUnderline =
     hasTarget &&
-    targets.some((t) => {
+    stateTargets.some((t) => {
       const existing = highlightsMap[t.key] ?? EMPTY_HIGHLIGHTS;
       return existing.some((h) => h.start === t.start && h.end === t.end && h.underline);
     });
@@ -161,7 +227,7 @@ export function ProjectionDock() {
     const bg = highlightBg(color);
     return (
       hasTarget &&
-      targets.every((t) => {
+      stateTargets.every((t) => {
         const existing = highlightsMap[t.key] ?? EMPTY_HIGHLIGHTS;
         return existing.some((h) => h.start === t.start && h.end === t.end && h.color === bg);
       })

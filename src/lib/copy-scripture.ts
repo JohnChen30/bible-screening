@@ -38,6 +38,10 @@ export interface CopyScriptureOptions {
   titleFormat: 'chapterCn' | 'reference';
   /** 译本 code → 展示名（多译本同时选中时用于区分区块） */
   versionName: (code: string) => string;
+  /** 译本 code → 语言（如 'en' / 'zh-Hans'）：英文译本标题使用英文格式 */
+  versionLanguage?: (code: string) => string;
+  /** 面板译本顺序（左 / 上在前）：双译本时决定区块先后 */
+  versionOrder?: string[];
   /** 单击选中的整节（整节全文参与复制，作为 start=0/end=∞ 的整段区间） */
   wholeVerses?: WholeVerse[];
 }
@@ -83,12 +87,20 @@ function buildTitle(
   chapter: number,
   verses: number[],
   titleFormat: 'chapterCn' | 'reference',
+  isEn = false,
 ): string {
   if (!book || verses.length === 0) return '';
   const sorted = [...new Set(verses)].sort((a, b) => a - b);
   const contig = sorted.every((v, i) => i === 0 || v === sorted[i - 1] + 1);
   const minV = sorted[0];
   const maxV = sorted[sorted.length - 1];
+
+  // 英文译本：统一使用西式引用格式（Genesis 1:3-5 / Genesis 1:3,5,7）
+  if (isEn) {
+    if (sorted.length === 1) return `${book.nameEn} ${chapter}:${minV}`;
+    if (contig) return `${book.nameEn} ${chapter}:${minV}-${maxV}`;
+    return `${book.nameEn} ${chapter}:${sorted.join(',')}`;
+  }
 
   if (titleFormat === 'reference') {
     if (sorted.length === 1) return `${book.nameCn} ${chapter}:${minV}`;
@@ -128,8 +140,17 @@ export function buildScriptureCopyText(ranges: PendingRange[], opts: CopyScriptu
 
   const blocks: string[] = [];
   const multiVersion = byVersion.size > 1;
+  // 双译本时按面板顺序（左 / 上在前）输出区块，而不是按选区出现顺序
+  const order = opts.versionOrder ?? [];
+  const orderedCodes = [...byVersion.keys()].sort((a, b) => {
+    const ia = order.indexOf(a);
+    const ib = order.indexOf(b);
+    return (ia < 0 ? Number.MAX_SAFE_INTEGER : ia) - (ib < 0 ? Number.MAX_SAFE_INTEGER : ib);
+  });
 
-  for (const [code, rs] of byVersion) {
+  for (const code of orderedCodes) {
+    const rs = byVersion.get(code)!;
+    const isEn = (opts.versionLanguage?.(code) ?? 'zh-Hans').startsWith('en');
     // 再按 书:章 分段（跨章选区各自成块，各带自己的标题）
     const bySection = new Map<string, PendingRange[]>();
     for (const r of rs) {
@@ -161,7 +182,7 @@ export function buildScriptureCopyText(ranges: PendingRange[], opts: CopyScriptu
         lines.push(showVerseNumber ? `${v} ${text}` : text);
       }
 
-      const title = buildTitle(book, chapter, verses, titleFormat);
+      const title = buildTitle(book, chapter, verses, titleFormat, isEn);
       const head = multiVersion ? `${versionName(code)}\n${title}` : title;
       sectionBlocks.push(`${head}\n${lines.join('\n')}`);
     }

@@ -29,6 +29,7 @@ import {
   toPassage,
   toSelection,
   DEFAULT_SELECT_COLOR,
+  BIBLE_PANEL_ID,
   type Panel,
   type PassageItem,
   type ProjectionPayload,
@@ -40,6 +41,18 @@ import { availableMonitors, currentMonitor, primaryMonitor, type Monitor } from 
 
 /** 高亮节复合键：bookId:chapter:verse（跨多段面板唯一，避免不同章同节号错位高亮） */
 export const highlightKey = (bookId: number, chapter: number, verse: number) => `${bookId}:${chapter}:${verse}`;
+
+/**
+ * 确保固定「圣经」面板存在且排在首位（不可关闭；标注长期保留）。
+ * fallbackPassages 仅在新创建时使用（首次启动给一段默认经文）。
+ */
+function withBiblePanel(panels: Panel[], fallbackPassages: PassageItem[] = []): Panel[] {
+  const existing = panels.find((p) => p.id === BIBLE_PANEL_ID);
+  const fixed: Panel = existing
+    ? { ...existing, name: '圣经' }
+    : { id: BIBLE_PANEL_ID, name: '圣经', passages: fallbackPassages };
+  return [fixed, ...panels.filter((p) => p.id !== BIBLE_PANEL_ID)];
+}
 
 interface PanelsState {
   isProjecting: boolean;
@@ -390,7 +403,7 @@ export const usePanelsStore = create<PanelsState>()(
     const versionCode = useBibleStore.getState().activeVersionIds[0];
     const id = `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     set((s) => ({
-      panels: [...s.panels, { id, name: '空面板', versionCode, passages: [] }],
+      panels: withBiblePanel([...s.panels, { id, name: '空面板', versionCode, passages: [] }]),
       activePanelId: id,
       highlightedVerses: [],
       cursorVerse: null,
@@ -406,7 +419,7 @@ export const usePanelsStore = create<PanelsState>()(
     const ref = book ? formatPassageRef(book.nameCn, passage) : `${passage.chapter}`;
     const id = `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     set((s) => ({
-      panels: [...s.panels, { id, name: ref, versionCode: bible.activeVersionIds[0], passages: [passage] }],
+      panels: withBiblePanel([...s.panels, { id, name: ref, versionCode: bible.activeVersionIds[0], passages: [passage] }]),
       activePanelId: id,
       highlightedVerses: [],
       cursorVerse: null,
@@ -416,6 +429,8 @@ export const usePanelsStore = create<PanelsState>()(
   },
 
   removePanel: (id) => {
+    // 固定「圣经」面板不可关闭
+    if (id === BIBLE_PANEL_ID) return;
     set((s) => ({
       panels: s.panels.filter((p) => p.id !== id),
       activePanelId: s.activePanelId === id ? null : s.activePanelId,
@@ -447,7 +462,8 @@ export const usePanelsStore = create<PanelsState>()(
       const panels = s.panels.map((p) => {
         if (p.id !== panelId) return p;
         const passages = [...(p.passages ?? []), passage];
-        return { ...p, passages, name: panelNameFromPassages(bible, passages) };
+        // 固定「圣经」面板保持名字不变（不随内容改名）
+        return { ...p, passages, name: p.id === BIBLE_PANEL_ID ? p.name : panelNameFromPassages(bible, passages) };
       });
       return { panels };
     });
@@ -471,7 +487,12 @@ export const usePanelsStore = create<PanelsState>()(
     set((s) => ({
       panels: s.panels.map((p) =>
         p.id === s.activePanelId
-          ? { ...p, passages: [passage], name: panelNameFromPassages(bible, [passage]) }
+          ? {
+              ...p,
+              passages: [passage],
+              // 固定「圣经」面板保持名字不变（不随内容改名）
+              name: p.id === BIBLE_PANEL_ID ? p.name : panelNameFromPassages(bible, [passage]),
+            }
           : p,
       ),
     }));
@@ -488,20 +509,35 @@ export const usePanelsStore = create<PanelsState>()(
     const bible = useBibleStore.getState();
     const book = bible.books.find((b) => b.id === bible.selection.bookId);
     if (!book) return;
-    // keep：已有面板则原样保留（并激活第一个），不新建
+
+    const passage = toPassage(bible.selection);
+    const ref = formatPassageRef(book.nameCn, passage);
+    const existingFixed = get().panels.find((p) => p.id === BIBLE_PANEL_ID);
+    // 固定「圣经」面板：首次创建时用当前选区填充；之后始终保留其内容与长期标注
+    const fixedPanel: Panel = existingFixed ?? {
+      id: BIBLE_PANEL_ID,
+      name: '圣经',
+      versionCode: bible.activeVersionIds[0],
+      passages: [passage],
+    };
+
+    // keep：已有面板则原样保留（激活固定面板），不新建
     if (mode === 'keep' && get().panels.length > 0) {
-      const first = get().panels[0];
-      set({ activePanelId: first.id });
+      const others = get().panels.filter((p) => p.id !== BIBLE_PANEL_ID);
+      const panels = [fixedPanel, ...others];
+      // 尽量保留上次激活的面板；不存在则回到固定面板
+      const prevActive = get().activePanelId;
+      const active = prevActive && panels.some((p) => p.id === prevActive) ? prevActive : fixedPanel.id;
+      set({ panels, activePanelId: active });
       get().sync();
       return;
     }
-    // new（默认）：丢弃旧面板，按当前选区开一个全新面板
-    useHighlightsStore.setState({ byPanel: {} });
-    const passage = toPassage(bible.selection);
-    const ref = formatPassageRef(book.nameCn, passage);
+
+    // new（默认）：丢弃「非固定」旧面板及其临时标注；固定面板与它的长期标注保留
+    useHighlightsStore.setState((hs) => ({ byPanel: { [BIBLE_PANEL_ID]: hs.byPanel[BIBLE_PANEL_ID] ?? {} } }));
     const id = `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     set({
-      panels: [{ id, name: ref, versionCode: bible.activeVersionIds[0], passages: [passage] }],
+      panels: [fixedPanel, { id, name: ref, versionCode: bible.activeVersionIds[0], passages: [passage] }],
       activePanelId: id,
       isProjecting: false,
       blackout: false,
@@ -514,14 +550,15 @@ export const usePanelsStore = create<PanelsState>()(
   },
     }),
     {
-      // 只持久化面板列表；高亮刻意不持久化（用户要求「不是永久保存」）
+      // 只持久化面板列表；普通面板的高亮不持久化（固定「圣经」面板的标注单独持久化，
+      // 见 use-highlights-store 的 FIXED_HL_KEY）
       name: 'bible-panels',
       partialize: (s) => ({ panels: s.panels, activePanelId: s.activePanelId }),
-      // 老版本面板（单段 bookId/chapter 存储）迁移为 passages
+      // 老版本面板（单段 bookId/chapter 存储）迁移为 passages；并确保固定面板存在且在首位
       merge: (persisted, current) => {
         const merged = { ...current, ...(persisted as Partial<PanelsState>) };
         if (Array.isArray(merged.panels)) {
-          merged.panels = merged.panels.map((p) => normalizePanel(p));
+          merged.panels = withBiblePanel(merged.panels.map((p) => normalizePanel(p)));
         }
         return merged;
       },

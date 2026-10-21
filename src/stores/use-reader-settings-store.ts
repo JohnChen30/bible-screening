@@ -41,16 +41,17 @@ interface ReaderSettings {
 }
 
 /**
- * 默认排版（用户反馈）：浅色纸质——纸黄背景 / 黑色经文 / 灰色节号 / 黑色标题，
- * 全左靠齐，段落排版，行距 1.5，衬线加粗，标题格式「书卷 章:节」（如 创世记 1:1）。
+ * 默认排版：浅色纸质——纸黄背景 / 黑色经文 / 灰色节号 / 黑色标题，
+ * 全左靠齐，**逐节**排版，行距 1.5，**无衬线不加粗**，字号 20，边距 3，
+ * 标题格式「书卷 章:节」（如 创世记 1:1）。
  */
 const DEFAULTS: Omit<ReaderSettings, 'set' | 'reset'> = {
-  fontSize: 18,
-  bold: true,
-  fontFamily: 'serif',
+  fontSize: 20,
+  bold: false,
+  fontFamily: 'sans',
   lineHeight: 1.5,
   margin: 3,
-  layoutMode: 'paragraph',
+  layoutMode: 'verse',
   showVerseNumber: true,
   // 用户反馈：默认标题改成「数字:数字」的 reference 格式（如 创世记 1:1）
   titleFormat: 'reference',
@@ -74,15 +75,22 @@ export const useReaderSettingsStore = create<ReaderSettings>()(
     }),
     {
       name: 'bible-reader-settings',
-      // v3：默认行距由 1 改为 1.5；v4：默认标题格式由 chapterCn 改为 reference（其余用户自定义保留）
-      version: 4,
+      // v3：默认行距 1 → 1.5；v4：默认标题格式 chapterCn → reference；
+      // v5：默认改为「逐节 / 字号 20 / 不加粗 / 无衬线 / 边距 3」（其余用户自定义保留）
+      version: 5,
       migrate: (persisted) => {
         const p = (persisted ?? {}) as Partial<ReaderSettings>;
         const next = { ...DEFAULTS, ...p };
-        // 旧默认行距为 1：迁移时若仍是旧默认（或缺失）则改用新默认 1.5
+        // v3：旧默认行距为 1 → 新默认 1.5
         if (p.lineHeight === undefined || p.lineHeight === 1) next.lineHeight = DEFAULTS.lineHeight;
-        // 旧默认标题格式为 chapterCn：若仍是旧默认（或缺失）则改用新默认 reference
+        // v4：旧默认标题格式 chapterCn → reference
         if (p.titleFormat === undefined || p.titleFormat === 'chapterCn') next.titleFormat = DEFAULTS.titleFormat;
+        // v5：仅在仍是「旧默认值」时才切到新默认，避免覆盖用户自定义
+        if (p.fontSize === undefined || p.fontSize === 18) next.fontSize = DEFAULTS.fontSize;
+        if (p.bold === undefined || p.bold === true) next.bold = DEFAULTS.bold;
+        if (p.fontFamily === undefined || p.fontFamily === 'serif') next.fontFamily = DEFAULTS.fontFamily;
+        if (p.layoutMode === undefined || p.layoutMode === 'paragraph') next.layoutMode = DEFAULTS.layoutMode;
+        if (p.margin === undefined) next.margin = DEFAULTS.margin;
         return next;
       },
     },

@@ -5,8 +5,9 @@
  */
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { Plus, X } from 'lucide-react';
+import { Lock, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { BIBLE_PANEL_ID } from '@/lib/types';
 import { usePanelsStore } from '@/stores/use-panels-store';
 
 export function PanelBar() {
@@ -16,6 +17,11 @@ export function PanelBar() {
   const removePanel = usePanelsStore((s) => s.removePanel);
   const addPanel = usePanelsStore((s) => s.addPanel);
 
+  // 固定「圣经」面板永远排在第一位
+  const ordered = [...panels].sort((a, b) =>
+    a.id === BIBLE_PANEL_ID ? -1 : b.id === BIBLE_PANEL_ID ? 1 : 0,
+  );
+
   return (
     <div data-panel-bar className="toolbar-glass flex h-14 shrink-0 items-center gap-2 border-t border-border px-4">
       <span className="mr-1 shrink-0 text-[11px] uppercase tracking-[0.18em] text-muted-foreground/70">
@@ -24,36 +30,48 @@ export function PanelBar() {
 
       <div className="scrollbar-thin flex min-w-0 flex-1 items-center gap-2 overflow-x-auto py-2">
         <AnimatePresence initial={false}>
-          {panels.map((p) => (
-            <motion.div
-              key={p.id}
-              layout
-              initial={{ opacity: 0, scale: 0.85, width: 0 }}
-              animate={{ opacity: 1, scale: 1, width: 'auto' }}
-              exit={{ opacity: 0, scale: 0.85, width: 0 }}
-              transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-              className="group/panel relative shrink-0"
-            >
-              <button
-                onClick={() => activatePanel(p.id)}
-                className={cn(
-                  'flex h-9 items-center rounded-xl px-3.5 text-[13px] transition-colors focus-ring',
-                  activePanelId === p.id
-                    ? 'bg-accent/12 font-medium text-accent ring-1 ring-inset ring-accent/20'
-                    : 'bg-foreground/[0.045] text-foreground/70 hover:bg-foreground/[0.08] hover:text-foreground',
+          {ordered.map((p) => {
+            const isFixed = p.id === BIBLE_PANEL_ID;
+            return (
+              <motion.div
+                key={p.id}
+                layout
+                initial={{ opacity: 0, scale: 0.85, width: 0 }}
+                animate={{ opacity: 1, scale: 1, width: 'auto' }}
+                exit={{ opacity: 0, scale: 0.85, width: 0 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                className="group/panel relative shrink-0"
+              >
+                <button
+                  onClick={() => activatePanel(p.id)}
+                  title={isFixed ? '固定面板 · 不可关闭 · 标注长期保留' : p.name}
+                  className={cn(
+                    'flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-[13px] transition-colors focus-ring',
+                    isFixed
+                      ? // 固定面板：不用强调色区分，只把边框加粗（激活时仍沿用通用激活态）
+                        activePanelId === p.id
+                        ? 'bg-accent/12 font-semibold text-accent ring-2 ring-inset ring-accent/35'
+                        : 'bg-foreground/[0.03] text-foreground/75 ring-2 ring-inset ring-foreground/20 hover:bg-foreground/[0.06] hover:text-foreground'
+                      : activePanelId === p.id
+                        ? 'bg-accent/12 font-medium text-accent ring-1 ring-inset ring-accent/20'
+                        : 'bg-foreground/[0.045] text-foreground/70 hover:bg-foreground/[0.08] hover:text-foreground',
+                  )}
+                >
+                  {isFixed && <Lock className="h-3 w-3 shrink-0 opacity-70" strokeWidth={2} />}
+                  <span>{p.name}</span>
+                </button>
+                {!isFixed && (
+                  <button
+                    onClick={() => removePanel(p.id)}
+                    aria-label={`删除面板 ${p.name}`}
+                    className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-card text-muted-foreground shadow-md ring-1 ring-border transition-colors hover:text-red-400 group-hover/panel:flex focus-ring"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
                 )}
-              >
-                <span>{p.name}</span>
-              </button>
-              <button
-                onClick={() => removePanel(p.id)}
-                aria-label={`删除面板 ${p.name}`}
-                className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-card text-muted-foreground shadow-md ring-1 ring-border transition-colors hover:text-red-400 group-hover/panel:flex focus-ring"
-              >
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
 
         {panels.length === 0 && (

@@ -140,6 +140,13 @@ export interface PassageItem {
 }
 
 /** 多面板：一组藏好的经文段（随点随投），面板内容 = passages 遍历渲染 */
+/**
+ * 固定「圣经」面板 id。
+ * 该面板始终存在、不可关闭；其高亮 / 下划线单独持久化（见 use-highlights-store），
+ * 只要用户没有手动清除就一直保留（重启软件也在）。其它面板仍是临时标注。
+ */
+export const BIBLE_PANEL_ID = 'bible';
+
 export interface Panel {
   id: string;
   name: string;

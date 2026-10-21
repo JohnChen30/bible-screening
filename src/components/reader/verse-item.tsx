@@ -8,16 +8,13 @@
  *   - 游标所在节：节号变为强调色。
  */
 
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import type { TextHighlight } from '@/lib/types';
+import { mergeHighlightsAcrossVersions } from '@/lib/highlight-merge';
 import { useBibleStore } from '@/stores/use-bible-store';
 import { usePanelsStore } from '@/stores/use-panels-store';
-import { highlightsOf, useHighlightsStore, verseKey } from '@/stores/use-highlights-store';
+import { highlightsOf, useHighlightsStore } from '@/stores/use-highlights-store';
 import { VerseText } from './verse-text';
-
-/** 稳定空数组引用（避免 zustand getSnapshot 每次返回新引用导致无限重渲染） */
-const EMPTY_HIGHLIGHTS: TextHighlight[] = [];
 
 interface VerseItemProps {
   versionCode: string;
@@ -32,6 +29,11 @@ interface VerseItemProps {
   highlighted?: boolean;
   /** 强调色（选中经文颜色；工具栏可自由设置） */
   selectColor?: string;
+  /**
+   * 参与「同节标注合并」的译本集合（分屏 / 逐节对照时传入全部版本，
+   * 使同一面板同一节在各窗格的标注保持同步）。不传则只合并本版本。
+   */
+  highlightVersionCodes?: string[];
   onActivate?: () => void;
 }
 
@@ -45,6 +47,7 @@ export function VerseItem({
   inline = false,
   highlighted,
   selectColor,
+  highlightVersionCodes,
   onActivate,
 }: VerseItemProps) {
   const godTermSwap = useBibleStore((s) => s.godTermSwap);
@@ -53,7 +56,20 @@ export function VerseItem({
   const activePanelId = usePanelsStore((s) => s.activePanelId);
   const byPanel = useHighlightsStore((s) => s.byPanel);
   const highlightsMap = highlightsOf(byPanel, activePanelId);
-  const highlights = highlightsMap[verseKey(versionCode, bookId, chapter, verse)] ?? EMPTY_HIGHLIGHTS;
+  // 分屏 / 逐节对照：把同一节在所有相关译本上的标注合并到本译本，保证同一经文同步显示
+  const codesKey = (highlightVersionCodes ?? [versionCode]).join(',');
+  const highlights = useMemo(
+    () =>
+      mergeHighlightsAcrossVersions(
+        highlightsMap,
+        codesKey ? codesKey.split(',') : [versionCode],
+        versionCode,
+        bookId,
+        chapter,
+        verse,
+      ),
+    [highlightsMap, codesKey, versionCode, bookId, chapter, verse],
+  );
 
   /** 按下位置：用于区分「拖选文字的 mouseup→click」与「真正的点选整节」 */
   const downPos = useRef<{ x: number; y: number } | null>(null);

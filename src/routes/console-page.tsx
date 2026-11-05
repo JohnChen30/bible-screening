@@ -232,6 +232,20 @@ export function ConsolePage() {
     usePanelsStore.getState().applyPanelStartup();
   }, [status, selection.bookId]);
 
+  /* 启动最大化（仅 Tauri）：挂载后调用标准最大化，尊重任务栏 */
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
+    let cancelled = false;
+    void import('@tauri-apps/api/window')
+      .then(({ getCurrentWindow }) => {
+        if (!cancelled) void getCurrentWindow().maximize();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   /* 快捷键 */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

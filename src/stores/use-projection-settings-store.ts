@@ -16,10 +16,10 @@ export type PanelStartup = 'new' | 'keep';
 
 interface ProjectionSettings {
   /**
-   * 启动时面板行为（用户反馈）：
-   *   new每次启动都打开一个全新面板（丢弃上次的面板列表）
-   *   keep 保留上一次的面板列表
-   * 默认 new —— 每次启动都是干净的单个面板。
+   * 启动时面板行为：
+   *   new  只保留固定「圣经」面板（清理其它临时面板），并默认打开它
+   *   keep 保留上一次的面板列表，同样默认打开固定面板
+   * 两种模式启动都会**默认激活固定「圣经」面板**。
    */
   panelStartup: PanelStartup;
 

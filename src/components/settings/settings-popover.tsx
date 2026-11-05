@@ -321,14 +321,14 @@ export function SettingsPopover() {
                 label="启动时"
                 value={projection.panelStartup}
                 options={[
-                  { value: 'new' as PanelStartup, label: '打开新面板' },
+                  { value: 'new' as PanelStartup, label: '只留固定面板' },
                   { value: 'keep' as PanelStartup, label: '保留原面板' },
                 ]}
                 onChange={(v) => projection.set('panelStartup', v)}
               />
               <p className="px-0.5 text-[11px] leading-relaxed text-muted-foreground/70">
-                打开新面板：每次启动都按当前选区开一个干净面板；保留原面板：沿用上次的面板列表。
-                高亮与下划线只在当前面板生效，不永久保存。
+                启动默认打开固定「圣经」面板。只留固定面板：每次启动清掉其它临时面板；保留原面板：沿用上次的面板列表。
+                固定面板的高亮 / 下划线长期保存，其它面板仅本次临时。
               </p>
             </Section>
 

@@ -511,34 +511,35 @@ export const usePanelsStore = create<PanelsState>()(
     if (!book) return;
 
     const passage = toPassage(bible.selection);
-    const ref = formatPassageRef(book.nameCn, passage);
     const existingFixed = get().panels.find((p) => p.id === BIBLE_PANEL_ID);
-    // 固定「圣经」面板：首次创建时用当前选区填充；之后始终保留其内容与长期标注
-    const fixedPanel: Panel = existingFixed ?? {
-      id: BIBLE_PANEL_ID,
-      name: '圣经',
-      versionCode: bible.activeVersionIds[0],
-      passages: [passage],
-    };
+    // 固定「圣经」面板：首次（或为空）时用当前选区填充；之后保留其内容与长期标注
+    const fixedPanel: Panel =
+      existingFixed && existingFixed.passages.length > 0
+        ? existingFixed
+        : {
+            id: BIBLE_PANEL_ID,
+            name: '圣经',
+            versionCode: bible.activeVersionIds[0],
+            passages: [passage],
+          };
 
-    // keep：已有面板则原样保留（激活固定面板），不新建
+    // 启动默认打开固定「圣经」面板：把全局选区对齐到它显示的内容
+    const first = fixedPanel.passages[0];
+    if (first) useBibleStore.getState().setSelection(toSelection(first));
+
+    // keep：保留其它面板；启动默认激活固定面板
     if (mode === 'keep' && get().panels.length > 0) {
       const others = get().panels.filter((p) => p.id !== BIBLE_PANEL_ID);
-      const panels = [fixedPanel, ...others];
-      // 尽量保留上次激活的面板；不存在则回到固定面板
-      const prevActive = get().activePanelId;
-      const active = prevActive && panels.some((p) => p.id === prevActive) ? prevActive : fixedPanel.id;
-      set({ panels, activePanelId: active });
+      set({ panels: [fixedPanel, ...others], activePanelId: fixedPanel.id });
       get().sync();
       return;
     }
 
-    // new（默认）：丢弃「非固定」旧面板及其临时标注；固定面板与它的长期标注保留
+    // new（默认）：只保留固定面板（丢弃其它面板及其临时标注），并默认打开它
     useHighlightsStore.setState((hs) => ({ byPanel: { [BIBLE_PANEL_ID]: hs.byPanel[BIBLE_PANEL_ID] ?? {} } }));
-    const id = `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     set({
-      panels: [fixedPanel, { id, name: ref, versionCode: bible.activeVersionIds[0], passages: [passage] }],
-      activePanelId: id,
+      panels: [fixedPanel],
+      activePanelId: fixedPanel.id,
       isProjecting: false,
       blackout: false,
       cleared: false,

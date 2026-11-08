@@ -1,7 +1,7 @@
 {
   "name": "bible-screening",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.4.0",
   "type": "module",
   "description": "圣经投影与阅读软件 · Tauri + React + TypeScript",
   "scripts": {

@@ -32,7 +32,16 @@ function loadFixedBucket(): Record<string, TextHighlight[]> {
     const raw = localStorage.getItem(FIXED_HL_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, TextHighlight[]>) : {};
+    if (!parsed || typeof parsed !== 'object') return {};
+    // 清洗历史遗留的无效空标注（end <= start，曾由译本数据未加载时写入 0..0 产生）：
+    // 它们不可见但会被持久化，且干扰整节标注的切换判定。
+    const out: Record<string, TextHighlight[]> = {};
+    for (const [key, list] of Object.entries(parsed as Record<string, TextHighlight[]>)) {
+      if (!Array.isArray(list)) continue;
+      const valid = list.filter((h) => h && typeof h.start === 'number' && typeof h.end === 'number' && h.end > h.start);
+      if (valid.length > 0) out[key] = valid;
+    }
+    return out;
   } catch {
     return {};
   }

@@ -49,6 +49,8 @@ import { usePanelsStore } from '@/stores/use-panels-store';
 import { useCanvasSettingsStore } from '@/stores/use-canvas-settings-store';
 import { useReaderSettingsStore } from '@/stores/use-reader-settings-store';
 import { useHighlightsStore } from '@/stores/use-highlights-store';
+import { useShortcutsStore } from '@/stores/use-shortcuts-store';
+import { matchesShortcut } from '@/lib/shortcuts';
 import { toPassage, type CompareMode, type Selection } from '@/lib/types';
 
 const MODES: { value: CompareMode; label: string; icon: typeof BookOpenText }[] = [
@@ -246,23 +248,58 @@ export function ConsolePage() {
     };
   }, []);
 
-  /* 快捷键 */
+  /* 快捷键（配置驱动：键位来自 use-shortcuts-store，支持自定义） */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
       // 设置小窗等浮层打开时，快捷键（含 Esc）不外溢：关小窗不应退出投影
       if (target.closest?.('[role="dialog"]')) return;
-      // 带修饰键的组合键（如 Ctrl+C 复制经文）不走单键快捷键，避免误触「清屏」
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
       const ps = usePanelsStore.getState();
-      if (!ps.isProjecting) return;
-      if (e.key === 'b' || e.key === 'B') ps.toggleBlackout();
-      else if (e.key === 'c' || e.key === 'C') ps.clearScreen();
-      else if (e.key === 'Escape') {
-        // ESC 退出投影（已无浏览器全屏，故 ESC 直接停投影）
-        ps.stopProjection();
+      const bindings = useShortcutsStore.getState().bindings;
+
+      // 组合键优先（Ctrl+T 新建 / Ctrl+W 关闭当前面板）
+      if (e.ctrlKey || e.metaKey || e.altKey) {
+        if (matchesShortcut(e, bindings.newPanel)) {
+          e.preventDefault();
+          ps.addPanel();
+          return;
+        }
+        if (matchesShortcut(e, bindings.closePanel)) {
+          e.preventDefault();
+          // 关闭当前激活面板（固定「圣经」面板不可关，removePanel 内部已兜底）
+          if (ps.activePanelId) ps.removePanel(ps.activePanelId);
+          return;
+        }
+        return;
       }
+
+      // 切换投影 / 退出投影
+      if (matchesShortcut(e, bindings.toggleProjection)) {
+        e.preventDefault();
+        if (ps.isProjecting) ps.stopProjection();
+        else ps.startProjection();
+        return;
+      }
+
+      // 自动滚动 1-5 档（焦点不在经文选择栏时；选择栏内数字仍走快速定位）
+      const scrollIds = ['scroll1', 'scroll2', 'scroll3', 'scroll4', 'scroll5'] as const;
+      for (const id of scrollIds) {
+        if (matchesShortcut(e, bindings[id])) {
+          if (target.closest?.('[aria-label="经文选择器"]')) return;
+          if (!ps.isProjecting) return;
+          const n = Number(id.slice(-1));
+          ps.setAutoScroll(ps.autoScroll === n ? 0 : n);
+          return;
+        }
+      }
+
+      // 投影中的单键：黑屏 / 清屏 / Esc 退出投影
+      if (!ps.isProjecting) return;
+      if (matchesShortcut(e, bindings.blackout)) ps.toggleBlackout();
+      else if (matchesShortcut(e, bindings.clearScreen)) ps.clearScreen();
+      else if (matchesShortcut(e, bindings.stopProjection)) ps.stopProjection();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -348,6 +385,12 @@ export function ConsolePage() {
             <BookOpenText className="h-4 w-4 text-accent" strokeWidth={1.8} />
             <span className="text-[13px] font-medium tracking-wide">经文选择</span>
             <span className="text-[10px] text-muted-foreground/60">↑↓ ←→ Enter</span>
+            <span
+              className="text-[10px] text-muted-foreground/70"
+              title="使用技巧：先用鼠标点一下「章节」「起始节」或「结束节」其中一栏，再直接敲键盘数字，就能快速跳到那一栏的第几项。例如：点「章节」后敲 12，跳到第 12 章；点「起始节」后敲 3，跳到第 3 节。"
+            >
+              输数字快速跳转
+            </span>
             {/* 「添加到后续」：默认加号 + 文案；进入追加模式后变勾选 + 强调色底色 */}
             <button
               onClick={() => setAppendMode((v) => !v)}
@@ -452,7 +495,7 @@ export function ConsolePage() {
               onClick={() => (isProjecting ? stopProjection() : startProjection())}
             >
               {isProjecting ? <Square className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-              {isProjecting ? '退出投影' : '投影'}
+              {isProjecting ? '退出' : '投影'}
             </Button>
           </div>
         </header>

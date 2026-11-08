@@ -83,8 +83,8 @@ export function SearchBox() {
       <PopoverTrigger asChild>
         <div
           className={cn(
-            // 宽度自适应：放在弹性容器里可收缩（窄窗口时不把右侧按钮挤出可视区）
-            'flex h-8 w-full min-w-0 max-w-[248px] items-center gap-1.5 rounded-lg border border-border bg-card/60 pl-2.5 pr-2 transition-colors',
+            // 宽度自适应：放在弹性容器里，空间充足时占满、窄窗口时收缩（不把右侧按钮挤出可视区）
+            'flex h-8 w-full min-w-0 items-center gap-1.5 rounded-lg border border-border bg-card/60 pl-2.5 pr-2 transition-colors',
             'hover:border-accent/40 focus-within:border-accent/50 focus-within:bg-card',
           )}
         >

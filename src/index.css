@@ -156,7 +156,8 @@
   font-weight: var(--reader-font-weight);
   line-height: var(--reader-line-height);
   color: var(--reader-text);
-  letter-spacing: 0.02em;
+  /* 字间距由 --reader-letter-spacing 驱动（默认 0.02em，可在排版设置里调） */
+  letter-spacing: var(--reader-letter-spacing, 0.02em);
 }
 
 /* 经文行容器（非交互镜像分支）：仅提供字号上下文，颜色由内部 .reader-text 承担。
@@ -188,6 +189,43 @@
 }
 
 /* ============================================================================
+   「未选择经文」强调提示动画（点击高亮工具但无选区时触发）
+   ========================================================================== */
+@keyframes status-nudge {
+  0% { transform: translateX(0); }
+  20% { transform: translateX(-3px); color: hsl(var(--accent)); }
+  40% { transform: translateX(3px); color: hsl(var(--accent)); }
+  60% { transform: translateX(-2px); color: hsl(var(--accent)); }
+  80% { transform: translateX(2px); color: hsl(var(--accent)); }
+  100% { transform: translateX(0); }
+}
+.status-nudge {
+  animation: status-nudge 0.4s ease;
+}
+
+/* ============================================================================
+   画布阴影 / 描边 作用域收敛
+   —— Tailwind v3 的 `shadow-*` / `ring-*` 是通过**可继承**的 --tw-shadow /
+      --tw-ring-shadow 变量实现的，且其基础层对 `*` 统一套用
+      `box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)`。
+      于是画布容器上的 `shadow-2xl ring-1 ring-border` 会被**所有后代继承**，
+      导致每一节经文都被画上一圈淡框（暖色默认下几乎不可见，换边框色即暴露）。
+   —— 修法：把阴影/描边挪到「画布自身」而非其子树，即只让画布本体拥有阴影，
+      子元素统一清零。
+   ========================================================================== */
+[data-panel-canvas] {
+  box-shadow:
+    var(--tw-ring-offset-shadow, 0 0 #0000),
+    var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000);
+}
+[data-panel-canvas] * {
+  --tw-ring-offset-shadow: 0 0 #0000;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-shadow: 0 0 #0000;
+}
+
+/* ============================================================================
    篇章标题入场动画（纯 CSS，不依赖 JS 动画库）
    基准态即 opacity:1 —— 即使动画被禁用/中断标题也必然可见，
    根治「标题一片空白」（此前 AnimatePresence 竞态会把它卡在 opacity:0）
@@ -196,7 +234,7 @@
 @keyframes title-in {
   from {
     opacity: 0;
-    transform: translateY(-6px);
+    transform: translateY(-3px);
   }
   to {
     opacity: 1;
@@ -205,7 +243,7 @@
 }
 
 .title-in {
-  animation: title-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: title-in 0.22s ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -258,7 +296,11 @@
 
 .verse-number {
   color: var(--reader-verse-number);
-  font-size: 0.62em;
+  /* 节号跟随经文字号等比缩放：此前用 0.62em，但 em 基准是「继承到的字号」
+     （逐节模式的 .verse-block 未设 font-size，最终继承到根 16px），
+     经文字号调大时节号却纹丝不动。改为直接绑定 --reader-font-size，
+     系数 0.62 保证节号始终小于经文、且随经文一起缩放。 */
+  font-size: calc(var(--reader-font-size) * 0.62);
   font-weight: 500;
   vertical-align: 0.28em;
   margin-right: 0.4em;
@@ -266,13 +308,13 @@
   font-family: theme('fontFamily.sans');
 }
 
-/* 段落排版（反馈4-二）：多节成段，节号上标插入段内，首行缩进 2em，段间有距 */
+/* 段落排版（反馈4-二）：多节成段，节号上标插入段内，首行缩进由 --reader-indent 控制（默认 2em），段间有距 */
 .para-text {
   font-size: var(--reader-font-size);
   /* 同 .verse-line：行高必须落在块级 <p> 上，否则 <p> 的 strut（继承 normal）
      会压过内部行内 .reader-text 的行高，导致行距设置在段落模式下失效。 */
   line-height: var(--reader-line-height);
-  text-indent: 2em;
+  text-indent: var(--reader-indent, 2em);
   margin-top: 0;
   margin-bottom: 0.85em;
 }

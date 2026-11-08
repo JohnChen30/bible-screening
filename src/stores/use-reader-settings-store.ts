@@ -23,7 +23,11 @@ interface ReaderSettings {
   fontFamily: ReaderFont;
   lineHeight: number;
   margin: number; // 阅读区内边距（rem）
+  /** 字间距（em，随字号等比缩放；0 = 默认紧凑） */
+  letterSpacing: number;
   layoutMode: LayoutMode; // 排版模式（逐节 / 段落）
+  /** 段落模式首行缩进（true=缩进 2em / false=不缩进） */
+  indent: boolean;
   showVerseNumber: boolean;
   titleFormat: TitleFormat; // 标题格式（第X章 / 章:节区间）
   titleMode: TitleMode; // 标题显示方式（常驻顶部 / 随文滚动 / 不显示）
@@ -51,7 +55,9 @@ const DEFAULTS: Omit<ReaderSettings, 'set' | 'reset'> = {
   fontFamily: 'sans',
   lineHeight: 1.5,
   margin: 3,
+  letterSpacing: 0.02,
   layoutMode: 'verse',
+  indent: true,
   showVerseNumber: true,
   // 用户反馈：默认标题改成「数字:数字」的 reference 格式（如 创世记 1:1）
   titleFormat: 'reference',
@@ -77,7 +83,9 @@ export const useReaderSettingsStore = create<ReaderSettings>()(
       name: 'bible-reader-settings',
       // v3：默认行距 1 → 1.5；v4：默认标题格式 chapterCn → reference；
       // v5：默认改为「逐节 / 字号 20 / 不加粗 / 无衬线 / 边距 3」（其余用户自定义保留）
-      version: 5,
+      // v6：新增字间距 letterSpacing（默认 0.02em）
+      // v7：新增段落首行缩进开关 indent（默认 true）
+      version: 7,
       migrate: (persisted) => {
         const p = (persisted ?? {}) as Partial<ReaderSettings>;
         const next = { ...DEFAULTS, ...p };
@@ -91,6 +99,10 @@ export const useReaderSettingsStore = create<ReaderSettings>()(
         if (p.fontFamily === undefined || p.fontFamily === 'serif') next.fontFamily = DEFAULTS.fontFamily;
         if (p.layoutMode === undefined || p.layoutMode === 'paragraph') next.layoutMode = DEFAULTS.layoutMode;
         if (p.margin === undefined) next.margin = DEFAULTS.margin;
+        // v6：新增字间距（旧数据无此字段 → 取默认）
+        if (p.letterSpacing === undefined) next.letterSpacing = DEFAULTS.letterSpacing;
+        // v7：新增首行缩进开关（旧数据无此字段 → 默认开启）
+        if (p.indent === undefined) next.indent = DEFAULTS.indent;
         return next;
       },
     },

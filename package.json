@@ -1,16 +1,19 @@
 {
   "name": "bible-screening",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.2",
   "type": "module",
   "description": "圣经投影与阅读软件 · Tauri + React + TypeScript",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "build:web": "tsc --noEmit -p tsconfig.json && vite build --base=./",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "tauri": "tauri",
-    "snapshot": "node src-tools/export-snapshot.mjs"
+    "snapshot": "node src-tools/export-snapshot.mjs",
+    "manifest": "node src-tools/gen-update-manifest.mjs",
+    "publish:release": "node src-tools/publish-release.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.4",
@@ -22,6 +25,9 @@
     "@radix-ui/react-tooltip": "^1.1.6",
     "@tanstack/react-virtual": "^3.11.2",
     "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-opener": "^2.7.2",
+    "@tauri-apps/plugin-process": "^2.4.0",
+    "@tauri-apps/plugin-updater": "^2.14.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^11.15.0",

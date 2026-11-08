@@ -9,6 +9,8 @@ import { Lock, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BIBLE_PANEL_ID } from '@/lib/types';
 import { usePanelsStore } from '@/stores/use-panels-store';
+import { AppSettingsPopover } from '@/components/settings/app-settings-popover';
+import { UpdateButton } from '@/components/settings/update-button';
 
 export function PanelBar() {
   const panels = usePanelsStore((s) => s.panels);
@@ -36,10 +38,11 @@ export function PanelBar() {
               <motion.div
                 key={p.id}
                 layout
-                initial={{ opacity: 0, scale: 0.85, width: 0 }}
-                animate={{ opacity: 1, scale: 1, width: 'auto' }}
-                exit={{ opacity: 0, scale: 0.85, width: 0 }}
+                initial={{ opacity: 0, scale: 0.6 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.6, width: 0 }}
                 transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                style={{ transformOrigin: 'left center' }}
                 className="group/panel relative shrink-0"
               >
                 <button
@@ -74,6 +77,18 @@ export function PanelBar() {
           })}
         </AnimatePresence>
 
+        {/* 新建面板：动态紧跟已有面板右侧（不固定在栏尾），随面板增删一起流动 */}
+        <motion.div layout className="shrink-0">
+          <button
+            onClick={addPanel}
+            className="flex h-9 w-9 items-center justify-center rounded-xl bg-foreground/[0.045] text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground focus-ring"
+            aria-label="新建面板"
+            title="新建面板"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </motion.div>
+
         {panels.length === 0 && (
           <span className="text-xs text-muted-foreground/40">
             点右侧 + 新建面板（先清屏），再在左侧选经文上屏
@@ -81,15 +96,9 @@ export function PanelBar() {
         )}
       </div>
 
-      {/* 新建面板：先清屏，再选经文上屏 */}
-      <button
-        onClick={addPanel}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-foreground/[0.045] text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground focus-ring"
-        aria-label="新建面板"
-        title="新建面板"
-      >
-        <Plus className="h-4 w-4" />
-      </button>
+      {/* 更新按钮（有新版本时显示）+ 设置：固定在面板栏最右端（右下角），弹窗向上弹出 */}
+      <UpdateButton />
+      <AppSettingsPopover />
     </div>
   );
 }

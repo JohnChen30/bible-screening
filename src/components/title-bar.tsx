@@ -10,12 +10,34 @@
  * `getCurrentWindow()` 仅在 `__TAURI_INTERNALS__` 存在时调用，避免白屏。
  */
 
+import { useEffect, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Minus, Square, X } from 'lucide-react';
+import { Minus, Square, SquareDashed, X } from 'lucide-react';
 
 const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 export function TitleBar() {
+  /** 是否已最大化（最大化时按钮变为「还原」图标） */
+  const [maximized, setMaximized] = useState(false);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    const win = getCurrentWindow();
+    let disposed = false;
+    // 初始状态 + 窗口尺寸变化时同步（最大化/还原/手动拉伸都可能改变）
+    const refresh = () => {
+      void win.isMaximized().then((m) => {
+        if (!disposed) setMaximized(m);
+      });
+    };
+    refresh();
+    const unlisten = win.onResized(refresh);
+    return () => {
+      disposed = true;
+      void unlisten.then((u) => u());
+    };
+  }, []);
+
   const minimize = () => {
     if (isTauri()) void getCurrentWindow().minimize();
   };
@@ -48,10 +70,15 @@ export function TitleBar() {
         <button
           type="button"
           onClick={toggleMaximize}
-          aria-label="最大化或还原"
+          aria-label={maximized ? '窗口化（还原）' : '最大化'}
+          title={maximized ? '窗口化（还原）' : '最大化'}
           className="flex w-11 items-center justify-center text-foreground/70 transition-colors hover:bg-foreground/10"
         >
-          <Square className="h-3 w-3" strokeWidth={2} />
+          {maximized ? (
+            <SquareDashed className="h-3.5 w-3.5" strokeWidth={2} />
+          ) : (
+            <Square className="h-3 w-3" strokeWidth={2} />
+          )}
         </button>
         <button
           type="button"

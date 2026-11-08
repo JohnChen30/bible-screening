@@ -25,6 +25,9 @@ import { highlightsOf, NO_PANEL, useHighlightsStore, verseKey } from '@/stores/u
 import { suppressSelectionClearFor, useTextSelectionStore } from '@/stores/use-text-selection-store';
 import { highlightBg, usePaletteStore } from '@/stores/use-palette-store';
 
+/** 是否运行在 Tauri 桌面端（v2 注入 __TAURI_INTERNALS__） */
+const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
 /** 稳定空数组引用 */
 const EMPTY_HIGHLIGHTS: TextHighlight[] = [];
 
@@ -116,7 +119,9 @@ export function ProjectionDock() {
         const key = verseKey(vc, b, c, v);
         const len = verseLengthOf(vc, b, c, v);
         const list = highlightsMap[key] ?? EMPTY_HIGHLIGHTS;
-        const whole = list.find((h) => h.start === 0 && h.end === len);
+        // len===0 = 该译本数据尚未加载：此时写入会产出 0..0 的无效空标注
+        // （固定「圣经」面板上还会被持久化），故找不到有效整节标注。
+        const whole = len > 0 ? list.find((h) => h.start === 0 && h.end === len) : undefined;
         return { vc, key, len, whole };
       });
       const wholes = entries.filter((e) => e.whole);
@@ -130,7 +135,8 @@ export function ProjectionDock() {
           for (const e of entries) {
             if (e.whole) {
               if (e.whole.color !== bg) updateHighlight(panelId, e.key, e.whole.id, { color: bg });
-            } else {
+            } else if (e.len > 0) {
+              // 译本数据未加载（len===0）时跳过，避免写入 0..0 的无效空标注
               addHighlight(panelId, e.key, { start: 0, end: e.len, color: bg, underline: false });
             }
           }
@@ -147,7 +153,10 @@ export function ProjectionDock() {
         } else {
           for (const e of entries) {
             if (e.whole) updateHighlight(panelId, e.key, e.whole.id, { underline: true });
-            else addHighlight(panelId, e.key, { start: 0, end: e.len, color: null, underline: true });
+            else if (e.len > 0) {
+              // 译本数据未加载（len===0）时跳过，避免写入 0..0 的无效空标注
+              addHighlight(panelId, e.key, { start: 0, end: e.len, color: null, underline: true });
+            }
           }
         }
       }
@@ -210,7 +219,9 @@ export function ProjectionDock() {
       ? highlightedVerses.flatMap((k) => {
           const [b, c, v] = k.split(':').map(Number);
           const codes = activeVersionIds.length ? activeVersionIds : primary ? [primary] : [];
-          return codes.map((vc) => ({ key: verseKey(vc, b, c, v), start: 0, end: verseLengthOf(vc, b, c, v) }));
+          return codes
+            .map((vc) => ({ key: verseKey(vc, b, c, v), start: 0, end: verseLengthOf(vc, b, c, v) }))
+            .filter((t) => t.end > 0); // 数据未加载（len=0）的译本无有效区间，不参与按下态判定
         })
       : [];
 
@@ -236,29 +247,44 @@ export function ProjectionDock() {
 
   const [accentOpen, setAccentOpen] = useState(false);
 
+  /**
+   * 「未选择经文」强调提示：无选区时点击高亮工具（色圈 / 下划线），
+   * 计数 +1 作为动画重播 key，让状态文案抖动 + 短暂变红，提示用户先选经文。
+   */
+  const [nudge, setNudge] = useState(0);
+  const nudgeNoTarget = () => setNudge((n) => n + 1);
+
   return (
     <div data-projection-dock className="shrink-0 border-t border-border bg-card/40 px-4 py-2.5">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
         {/* ============ 高亮组（左侧，核心工具）：五色 + 下划线 + 清除格式 ============ */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2" aria-label="高亮工具">
-          {/* 状态文案统一用系统 UI 字体（此前误用 font-serif，与其余界面不一致） */}
-          <span className="text-xs text-foreground/70">
+          {/* 状态文案：固定宽度 + 数字等宽（tabular-nums），字数变化不引起右侧控件跳动 */}
+          <span
+            key={nudge}
+            className={cn(
+              'inline-block w-[7rem] shrink-0 whitespace-nowrap text-left text-xs tabular-nums text-foreground/70',
+              nudge > 0 && 'status-nudge',
+            )}
+          >
             {hasPending
               ? `已选文字 ${pendingRanges.reduce((a, r) => a + (r.end - r.start), 0)} 字`
               : hasSel
                 ? `已选 ${highlightedVerses.length} 节`
                 : '未选择经文'}
           </span>
-          {hasPending && (
-            <button
-              title="取消文字选区（改回整节高亮）"
-              aria-label="取消文字选区"
-              onClick={clearPending}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-ring"
-            >
-              <CircleOff className="h-3.5 w-3.5" strokeWidth={1.8} />
-            </button>
-          )}
+          {/* 取消选区按钮常驻占位（无选区时 invisible 隐藏但仍占位，避免出现/消失引起跳动） */}
+          <button
+            title="取消文字选区（改回整节高亮）"
+            aria-label="取消文字选区"
+            onClick={clearPending}
+            className={cn(
+              'flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground focus-ring',
+              !hasPending && 'invisible',
+            )}
+          >
+            <CircleOff className="h-3.5 w-3.5" strokeWidth={1.8} />
+          </button>
           <span className="h-4 w-px bg-border" />
           {/* 「高亮」文字提示：紧跟在分隔线后、五个色圈之前，说明这几个色圈的用途 */}
           <span className="select-none text-[11px] text-muted-foreground">高亮</span>
@@ -269,11 +295,11 @@ export function ProjectionDock() {
               title={`高亮 ${i + 1}（${hasPending ? '作用于选区文字' : '作用于已选经文'}；再点同色去掉）`}
               aria-label={`高亮-${i + 1}`}
               aria-pressed={isColorActive(c)}
-              disabled={!hasTarget}
               onMouseDown={keepSelection}
-              onClick={() => applyHighlight(c)}
+              onClick={() => (hasTarget ? applyHighlight(c) : nudgeNoTarget())}
               className={cn(
-                'h-5 w-5 rounded-full ring-1 ring-inset ring-black/10 transition-transform hover:scale-115 focus-ring disabled:opacity-40 disabled:pointer-events-none',
+                'h-5 w-5 rounded-full ring-1 ring-inset ring-black/10 transition-transform hover:scale-115 focus-ring',
+                !hasTarget && 'opacity-40',
                 isColorActive(c) && 'ring-2 ring-offset-1 ring-offset-card ring-foreground/70',
               )}
               style={{ backgroundColor: c }}
@@ -285,11 +311,11 @@ export function ProjectionDock() {
               title={`下划线（${hasPending ? '作用于选区文字' : '作用于已选经文'}；再点去掉）`}
               aria-label="下划线"
               aria-pressed={anyUnderline}
-              disabled={!hasTarget}
               onMouseDown={keepSelection}
-              onClick={applyUnderline}
+              onClick={() => (hasTarget ? applyUnderline() : nudgeNoTarget())}
             className={cn(
-              'flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-foreground/5 hover:text-foreground focus-ring disabled:opacity-40 disabled:pointer-events-none',
+              'flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-foreground/5 hover:text-foreground focus-ring',
+              !hasTarget && 'opacity-40',
               anyUnderline ? 'bg-accent/15 text-accent' : 'text-muted-foreground',
             )}
           >
@@ -379,7 +405,12 @@ export function ProjectionDock() {
             <Button
               variant="outline"
               size="sm"
-              className={cn('gap-1.5 rounded-xl', blackout && 'border-red-500/40 bg-red-500/10 text-red-400')}
+              aria-pressed={blackout}
+              className={cn(
+                'gap-1.5 rounded-xl',
+                blackout &&
+                  'border-red-500/40 bg-red-500/10 text-red-400 hover:border-red-500/50 hover:bg-red-500/15 hover:text-red-400',
+              )}
               onClick={toggleBlackout}
             >
               <CircleOff className="h-3.5 w-3.5" />
@@ -388,7 +419,12 @@ export function ProjectionDock() {
             <Button
               variant="outline"
               size="sm"
-              className={cn('gap-1.5 rounded-xl', cleared && 'border-accent/40 bg-accent/10 text-accent')}
+              aria-pressed={cleared}
+              className={cn(
+                'gap-1.5 rounded-xl',
+                cleared &&
+                  'border-accent/40 bg-accent/10 text-accent hover:border-accent/50 hover:bg-accent/15 hover:text-accent',
+              )}
               onClick={clearScreen}
             >
               <Eraser className="h-3.5 w-3.5" />
@@ -414,15 +450,19 @@ export function ProjectionDock() {
                 </button>
               ))}
             </div>
-            <Link
-              to="/output"
-              target="_blank"
-              rel="noreferrer"
-              className="flex h-8 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-medium text-accent-foreground shadow-sm transition-opacity hover:opacity-90"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              打开投影窗口
-            </Link>
+            {/* 打开投影窗口：仅网页预览显示（浏览器里以新标签页打开 /output）。
+                桌面端投影窗口由 Tauri 动态创建（WebviewWindow），无需此入口，故隐藏。 */}
+            {!isTauri() && (
+              <Link
+                to="/output"
+                target="_blank"
+                rel="noreferrer"
+                className="flex h-8 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-medium text-accent-foreground shadow-sm transition-opacity hover:opacity-90"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                打开投影窗口
+              </Link>
+            )}
             <Button variant="ghost" size="sm" className="gap-1.5 rounded-xl text-muted-foreground" onClick={stopProjection}>
               <Square className="h-3 w-3" />
               退出投影

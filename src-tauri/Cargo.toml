@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.1.0"
+version = "0.3.2"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -24,6 +24,8 @@ log = "0.4"
 tauri = { version = "2.12.4", features = [] }
 tauri-plugin-log = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
+tauri-plugin-opener = "2.7.2"
+tauri-plugin-process = "2.4.0"
 
 # Disable incremental compilation for debug builds. This toolchain (rustc 1.99.0 /
 # MSVC) hits an internal compiler error (`rustc_metadata::encode_metadata`
@@ -31,3 +33,6 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # makes `tauri dev` rebuilds stable. Safe to remove once the toolchain is updated.
 [profile.dev]
 incremental = false
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-updater = "2.14.1"

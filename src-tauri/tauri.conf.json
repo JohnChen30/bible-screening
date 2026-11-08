@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "bible_screening",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "identifier": "com.biblescreening.app",
   "build": {
     "frontendDist": "../dist",
@@ -20,8 +20,7 @@
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
-        "decorations": false,
-        "additionalBrowserArgs": "--disable-gpu"
+        "decorations": false
       }
     ],
     "security": {
@@ -30,6 +29,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "resources": {
       "../resources/bible.db": "bible.db"
     },
@@ -48,6 +48,17 @@
     },
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZFODIzM0YxNDVDMjYyQzUKUldURllzSkY4VE9DL2p4NzVwTGI0MERJaS9WbGhMOTN5RU0yTm1nazlwbVdDSzNpUW1kb1IySS8K",
+      "endpoints": [
+        "https://github.com/JohnChen30/bible-screening/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

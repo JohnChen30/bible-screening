@@ -58,8 +58,8 @@ export const useBibleStore = create<BibleState>((set, get) => ({
     set({ status: 'loading', error: null });
     try {
       const [versions, books] = await Promise.all([fetchVersions(), fetchBooks()]);
-      // 默认激活：和合本 + 当代译本（中文优先，保证开箱即有对照数据）
-      const preferred = ['cuv', 'ccb'].filter((c) => versions.some((v) => v.code === c));
+      // 默认激活：和合本 + 新译本（中文优先，保证开箱即有对照数据）
+      const preferred = ['cuv', 'cnv'].filter((c) => versions.some((v) => v.code === c));
       const active = preferred.length ? preferred : versions.slice(0, 1).map((v) => v.code);
       set({ versions, books, activeVersionIds: active, status: 'ready' });
 

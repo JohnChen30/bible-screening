@@ -93,7 +93,7 @@ export function SettingsPopover() {
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      {/* 触发器：顶栏「排版设置」按钮（锚点正确，小窗在其下方弹出） */}
+      {/* 触发器：顶栏「排版」按钮（锚点正确，小窗在其下方弹出） */}
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className="gap-1.5 rounded-lg" aria-label="排版设置" title="排版设置">
           <Settings2 className="h-3.5 w-3.5" />
@@ -158,6 +158,12 @@ export function SettingsPopover() {
                 ]}
                 onChange={(v) => reader.set('layoutMode', v)}
               />
+              {/* 段落模式专属：首行缩进开关 */}
+              {reader.layoutMode === 'paragraph' && (
+                <div className="mt-2">
+                  <ToggleRow label="首行缩进" checked={reader.indent} onChange={(v) => reader.set('indent', v)} />
+                </div>
+              )}
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <ToggleRow label="神 / 上帝互换" checked={godTermSwap} onChange={setGodTermSwap} />
                 <ToggleRow label="显示节号" checked={reader.showVerseNumber} onChange={(v) => reader.set('showVerseNumber', v)} />
@@ -167,7 +173,7 @@ export function SettingsPopover() {
               </p>
             </Section>
 
-            {/* 行距 / 边距（用户反馈：由「字体」移入「排版」） */}
+            {/* 行距 / 字间距 / 边距（用户反馈：由「字体」移入「排版」；字间距插在行距与边距中间） */}
             <Section title="行距与边距">
               <div className="space-y-3">
                 <Row label="行距" value={reader.lineHeight.toFixed(1)}>
@@ -177,6 +183,15 @@ export function SettingsPopover() {
                     step={0.1}
                     value={[reader.lineHeight]}
                     onValueChange={([v]) => reader.set('lineHeight', v)}
+                  />
+                </Row>
+                <Row label="字间距" value={`${reader.letterSpacing.toFixed(2)}em`}>
+                  <Slider
+                    min={0}
+                    max={0.5}
+                    step={0.01}
+                    value={[reader.letterSpacing]}
+                    onValueChange={([v]) => reader.set('letterSpacing', v)}
                   />
                 </Row>
                 <Row label="边距" value={`${reader.margin}rem`}>
@@ -261,7 +276,7 @@ export function SettingsPopover() {
                 <Row label="字号" value={`${reader.fontSize}px`}>
                   <Slider
                     min={14}
-                    max={28}
+                    max={50}
                     step={1}
                     value={[reader.fontSize]}
                     onValueChange={([v]) => reader.set('fontSize', v)}

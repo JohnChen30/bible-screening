@@ -111,8 +111,12 @@ export interface TypographySnapshot {
   bold: boolean;
   fontFamily: 'serif' | 'sans';
   margin: number;
+  /** 字间距（em，随字号等比缩放） */
+  letterSpacing: number;
   /** 排版模式：逐节 / 段落 */
   layoutMode: 'verse' | 'paragraph';
+  /** 段落首行缩进开关 */
+  indent: boolean;
   showVerseNumber: boolean;
   /** 标题格式：第X章 / 章:节区间 */
   titleFormat: 'chapterCn' | 'reference';

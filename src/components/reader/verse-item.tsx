@@ -58,6 +58,9 @@ export function VerseItem({
   const highlightsMap = highlightsOf(byPanel, activePanelId);
   // 分屏 / 逐节对照：把同一节在所有相关译本上的标注合并到本译本，保证同一经文同步显示
   const codesKey = (highlightVersionCodes ?? [versionCode]).join(',');
+  // 跨译本区间映射依赖各译本的节文本长度（读 dataCache）。第二译本是异步加载的：
+  // 若不在依赖里订阅 dataCache，数据晚到时映射会按 1:1 错误缓存且永不重算（标注区间永久错位）。
+  const dataCache = useBibleStore((s) => s.dataCache);
   const highlights = useMemo(
     () =>
       mergeHighlightsAcrossVersions(
@@ -68,7 +71,7 @@ export function VerseItem({
         chapter,
         verse,
       ),
-    [highlightsMap, codesKey, versionCode, bookId, chapter, verse],
+    [highlightsMap, codesKey, versionCode, bookId, chapter, verse, dataCache],
   );
 
   /** 按下位置：用于区分「拖选文字的 mouseup→click」与「真正的点选整节」 */

@@ -10,7 +10,6 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
 import { BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { BookMeta, Selection } from '@/lib/types';
@@ -35,12 +34,26 @@ interface ColumnItem {
   group?: string; // 分组标题（旧约/新约）
 }
 
-const SPRING = { type: 'spring' as const, stiffness: 420, damping: 34, mass: 0.8 };
+/**
+ * 数字快速定位的缓冲时间（ms）。
+ * 人体工学依据：人连续敲两个数字键的间隔通常在 150~300ms。取 500ms 能稳妥地把
+ * 「1 之后紧接着 2」合并成「12」定位到第 12 章/节，又不至于让用户输完等太久；
+ * 主流快速定位交互普遍落在 400~800ms 区间，这里取中偏紧的 500ms。
+ */
+const DIGIT_BUFFER_MS = 500;
 
 export function MillerColumns({ books, selection, chapterCount, verseCount, onSelect, appendMode, onAppend }: MillerColumnsProps) {
   const [focusCol, setFocusCol] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+
+  /** 数字缓冲状态：{ col: 聚焦列, text: 累积数字, timer: 提交定时器 } */
+  const digitRef = useRef<{ col: number; text: string; timer: number }>({ col: 0, text: '', timer: 0 });
+  /** 缓冲数字的展示态（列头实时回显「→ 12」） */
+  const [digitText, setDigitText] = useState('');
+  /** 最新 selection 快照（供定时器提交时读取，避免闭包过期） */
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
 
   const chapters = useMemo(() => {
     const n = chapterCount(selection.bookId);
@@ -110,24 +123,67 @@ export function MillerColumns({ books, selection, chapterCount, verseCount, onSe
     } else if (colIdx === 2) {
       // 起始节：若结束节小于新的起始节则清除
       const patch: Partial<Selection> = { startVerse: v };
-      if (selection.endVerse != null && selection.endVerse < v) patch.endVerse = null;
+      if (selectionRef.current.endVerse != null && selectionRef.current.endVerse < v) patch.endVerse = null;
       onSelect(patch);
     } else {
       onSelect({ endVerse: v });
       // 追加模式：选到结束节即提交一段（如 约3:16-18），追加到当前面板而非替换
       if (appendMode && onAppend) {
         onAppend({
-          bookId: selection.bookId,
-          chapter: selection.chapter,
-          startVerse: selection.startVerse ?? v,
+          bookId: selectionRef.current.bookId,
+          chapter: selectionRef.current.chapter,
+          startVerse: selectionRef.current.startVerse ?? v,
           endVerse: v,
         });
       }
     }
   };
 
+  /** 数字快速定位：每敲一个数字就**立即**把当前缓冲值落到某列（不右移焦点）。
+   *  输「1」马上跳 1，缓冲内再输「2」跳到 12；越界则静默忽略。仅章节列（1/2/3）。 */
+  const locateDigit = (colIdx: number, n: number) => {
+    if (!Number.isFinite(n) || n < 1) return;
+    const sel = selectionRef.current;
+    let valid = false;
+    if (colIdx === 1) {
+      valid = n <= chapterCount(sel.bookId);
+    } else if (colIdx === 2) {
+      valid = n <= verseCount(sel.bookId, sel.chapter);
+    } else if (colIdx === 3) {
+      const min = sel.startVerse ?? 1;
+      valid = n >= min && n <= verseCount(sel.bookId, sel.chapter);
+    }
+    if (!valid) return;
+    handlePick(colIdx, { key: String(n), label: String(n), selected: false });
+  };
+
+  /** 缓冲结束时：只清空数字缓冲，不切换焦点列——数字定位的目标列始终由鼠标点击决定。 */
+  const flushDigit = () => {
+    digitRef.current.text = '';
+    digitRef.current.timer = 0;
+    setDigitText('');
+  };
+
   /** 键盘导航 */
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // 数字键：快速定位（增量即时跳转）。先点击某列聚焦，再输入数字即定位到该列第 N 项
+    if (/^[0-9]$/.test(e.key)) {
+      if (focusCol === 0) return; // 书卷列非数字定位目标
+      e.preventDefault();
+      const next = (digitRef.current.text || '') + e.key;
+      digitRef.current.text = next;
+      digitRef.current.col = focusCol;
+      setDigitText(next);
+      // 立即用当前缓冲定位（用户反馈：输 1 马上跳 1，缓冲内输 2 跳到 12）
+      locateDigit(focusCol, parseInt(next, 10));
+      // 把焦点从被点击的项收回容器（容器无可见边框），避免旧项残留 focus ring，
+      // 与新选中框叠加成「一列两个框」
+      containerRef.current?.focus();
+      if (digitRef.current.timer) window.clearTimeout(digitRef.current.timer);
+      digitRef.current.timer = window.setTimeout(flushDigit, DIGIT_BUFFER_MS);
+      return;
+    }
+
     const items = selectable(focusCol);
     if (!items.length) return;
     const currentIdx = Math.max(
@@ -164,6 +220,21 @@ export function MillerColumns({ books, selection, chapterCount, verseCount, onSe
     handlePick(focusCol, items[idx]);
   };
 
+  /** 切换聚焦列（点击 / 左右键）时，丢弃未提交的数字缓冲，避免串列 */
+  useEffect(() => {
+    if (digitRef.current.timer) window.clearTimeout(digitRef.current.timer);
+    digitRef.current = { col: focusCol, text: '', timer: 0 };
+    setDigitText('');
+  }, [focusCol]);
+
+  /** 卸载时清理定时器 */
+  useEffect(
+    () => () => {
+      if (digitRef.current.timer) window.clearTimeout(digitRef.current.timer);
+    },
+    [],
+  );
+
   /** 选中项滚动进入视野 */
   useEffect(() => {
     const col = columns[focusCol];
@@ -196,7 +267,11 @@ export function MillerColumns({ books, selection, chapterCount, verseCount, onSe
               {col.label}
             </span>
             <span className="text-[10px] tabular-nums text-muted-foreground/60">
-              {selectable(colIdx).length || ''}
+              {digitText && focusCol === colIdx ? (
+                <span className="font-semibold text-accent">→ {digitText}</span>
+              ) : (
+                selectable(colIdx).length || ''
+              )}
             </span>
           </div>
           {/* 列表 */}
@@ -213,14 +288,12 @@ export function MillerColumns({ books, selection, chapterCount, verseCount, onSe
                     {item.label}
                   </div>
                 ) : (
-                  <motion.button
+                  <button
                     key={item.key}
                     ref={(el) => {
                       if (el) itemRefs.current.set(`${col.key}:${item.key}`, el);
                       else itemRefs.current.delete(`${col.key}:${item.key}`);
                     }}
-                    layout
-                    transition={SPRING}
                     onClick={() => handlePick(colIdx, item)}
                     className={cn(
                       'group relative mb-0.5 flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] transition-colors',
@@ -230,13 +303,9 @@ export function MillerColumns({ books, selection, chapterCount, verseCount, onSe
                         : 'text-foreground/75 hover:bg-foreground/[0.055] hover:text-foreground',
                     )}
                   >
-                    {/* 选中高亮（共享布局动画） */}
+                    {/* 选中高亮：即时切换，不做 layoutId 飞行动画——键盘快速定位下该动画会残留旧框、新框呈「浅」过渡态 */}
                     {item.selected && (
-                      <motion.span
-                        layoutId={`miller-hl-${col.key}`}
-                        transition={SPRING}
-                        className="absolute inset-0 -z-10 rounded-lg bg-accent/12 ring-1 ring-inset ring-accent/20"
-                      />
+                      <span className="absolute inset-0 -z-10 rounded-lg bg-accent/12 ring-1 ring-inset ring-accent/20" />
                     )}
                     {colIdx === 0 && (
                       <span
@@ -249,7 +318,7 @@ export function MillerColumns({ books, selection, chapterCount, verseCount, onSe
                       </span>
                     )}
                     <span className={cn('min-w-0 flex-1 truncate', colIdx > 0 && 'tabular-nums')}>{item.label}</span>
-                  </motion.button>
+                  </button>
                 ),
               )
             )}

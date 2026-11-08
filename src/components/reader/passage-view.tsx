@@ -78,8 +78,12 @@ export interface PassageTypography {
   bold: boolean;
   fontFamily: 'serif' | 'sans';
   margin: number;
+  /** 字间距（em，随字号等比缩放；旧快照缺省 0.02） */
+  letterSpacing?: number;
   /** 排版模式：逐节（一节一块）/ 段落（多节成段，上标节号，首行缩进 2em） */
   layoutMode: 'verse' | 'paragraph';
+  /** 段落首行缩进开关（旧快照缺省 true） */
+  indent?: boolean;
   showVerseNumber: boolean;
   /** 标题格式：约翰福音 第3章 / 创世记 1:1-10 */
   titleFormat: 'chapterCn' | 'reference';
@@ -109,7 +113,9 @@ export function passageCssVars(t: PassageTypography): React.CSSProperties {
     '--reader-font-size': `calc(${t.fontSize} * var(--canvas-scale, 1) * 1px)`,
     '--reader-line-height': String(t.lineHeight),
     '--reader-font-weight': t.bold ? 600 : 400,
+    '--reader-letter-spacing': `${t.letterSpacing ?? 0.02}em`,
     '--reader-verse-align': t.verseAlign ?? 'left',
+    '--reader-indent': (t.indent ?? true) ? '2em' : '0',
     '--reader-pad': `calc(${t.margin} * var(--canvas-scale, 1) * 1rem)`,
     '--reader-font-family':
       t.fontFamily === 'serif'

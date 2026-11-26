@@ -28,9 +28,19 @@ const conf = JSON.parse(readFileSync(path.join(ROOT, 'src-tauri', 'tauri.conf.js
 const version = conf.version;
 const productName = conf.productName ?? 'bible_screening';
 
-const nsisDir = path.join(ROOT, 'src-tauri', 'target', 'release', 'bundle', 'nsis');
-if (!existsSync(nsisDir)) {
-  console.error(`✗ 找不到打包目录：${nsisDir}\n  请先执行 npm run tauri build`);
+// 兼容默认构建与指定 target（如 x86_64-pc-windows-gnu）两种产物目录
+const targetRoot = path.join(ROOT, 'src-tauri', 'target');
+const nsisCandidates = [path.join(targetRoot, 'release', 'bundle', 'nsis')];
+if (existsSync(targetRoot)) {
+  for (const entry of readdirSync(targetRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === 'release') continue;
+    nsisCandidates.push(path.join(targetRoot, entry.name, 'release', 'bundle', 'nsis'));
+  }
+}
+const exeNameExpected = `${productName}_${version}_x64-setup.exe`;
+const nsisDir = nsisCandidates.find((d) => existsSync(d) && existsSync(path.join(d, exeNameExpected)));
+if (!nsisDir) {
+  console.error(`✗ 找不到含 ${exeNameExpected} 的打包目录，已查找：\n  ${nsisCandidates.join('\n  ')}\n  请先执行 npm run tauri build`);
   process.exit(1);
 }
 
@@ -74,7 +84,7 @@ const manifest = {
   },
 };
 
-const outPath = path.join(ROOT, 'src-tauri', 'target', 'release', 'bundle', 'latest.json');
+const outPath = path.join(path.dirname(nsisDir), 'latest.json');
 writeFileSync(outPath, JSON.stringify(manifest, null, 2), 'utf8');
 
 console.log('✓ 已生成 latest.json');

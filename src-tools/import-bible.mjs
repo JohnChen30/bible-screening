@@ -34,6 +34,9 @@ const PARSERS = {
   'usfm': parseUsfm,
 };
 
+/** 译本固定展示顺序：versions 表 id / 前端译本列表均按此顺序生成，避免重新导入后顺序漂移 */
+const VERSION_ORDER = ['cuv', 'cnv', 'kjv', 'niv', 'ccb'];
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
@@ -238,7 +241,13 @@ async function main() {
     console.log(`   · ${s.label}  [${s.kind === 'zip' ? 'ZIP' : 'DIR'}] → 格式 ${s.format} → 译本 ${s.version.code}（${s.version.name}）`);
   }
 
-  const selected = opts.only ? sources.filter((s) => opts.only.has(s.version.code)) : sources;
+  const orderOf = (code) => {
+    const i = VERSION_ORDER.indexOf(code);
+    return i === -1 ? VERSION_ORDER.length : i;
+  };
+  const selected = (opts.only ? sources.filter((s) => opts.only.has(s.version.code)) : sources)
+    .slice()
+    .sort((a, b) => orderOf(a.version.code) - orderOf(b.version.code));
   if (!selected.length) {
     console.error(`--only 过滤后无匹配数据源（可用: ${sources.map((s) => s.version.code).join(', ')}）`);
     process.exit(2);

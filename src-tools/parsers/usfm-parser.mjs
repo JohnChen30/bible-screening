@@ -25,7 +25,19 @@ const REMOVE_WITH_CONTENT = ['f', 'fe', 'x', 'ex', 'fig', 'xt'];
 const KEEP_CONTENT_PAIRED = [
   'pn', 'w', 'nd', 'sc', 'k', 'add', 'bk', 'dc', 'ior', 'qt', 'sig', 'tl',
   'wa', 'wb', 'wg', 'wh', 'wj', 'wr', 'xs', 'pro', 'rb', 'jmp', 'ord', 'periph',
+  'qs', 'q', 'fq', 'em', 'bd', 'it', 'bdit', 'no', 'sup',
 ].join('|');
+
+/**
+ * 结构 / 标题类标记：整行忽略（即使后面带文字）。
+ * 段落与诗体标记（p / q1 / q2 / m / li1 / d / sp / pr …）后面若有文字，
+ * 属于经文续行，必须并入当前节，不能整行丢弃。
+ */
+const STRUCTURE_LINE_MARKERS = new Set([
+  'id', 'h', 'toc1', 'toc2', 'toc3', 'mt1', 'mt2', 'mt3',
+  's1', 's2', 's3', 's4', 's5', 'ms1', 'ms2', 'mr', 'sr', 'r', 'cl',
+  'b', 'cp', 'ca', 'vp', 'rem', 'restore', 'stu',
+]);
 
 /** 清理行内 USFM 标记 */
 export function stripUsfmInline(text) {
@@ -34,9 +46,9 @@ export function stripUsfmInline(text) {
   //    注意：必须用捕获组，\1 反向引用才能回指标记名
   const removeRe = new RegExp(`\\\\(${REMOVE_WITH_CONTENT.join('|')})[+-]?\\s[\\s\\S]*?\\\\\\1\\*`, 'g');
   t = t.replace(removeRe, '');
-  // 2. 成对字符标记：保留内容
-  const keepRe = new RegExp(`\\\\(${KEEP_CONTENT_PAIRED})\\b[^*]*?\\\\\\1\\*`, 'g');
-  t = t.replace(keepRe, '');
+  // 2. 成对字符标记：只去标记、保留内容（\pn 伊甸\pn* → 伊甸）
+  const keepRe = new RegExp(`\\\\(${KEEP_CONTENT_PAIRED})\\s*([^*]*?)\\\\\\1\\*`, 'g');
+  t = t.replace(keepRe, (_m, _marker, content) => content.trim());
   // 3. 兜底：移除任何残留标记（\marker 或 \marker*）
   t = t.replace(/\\[a-zA-Z]+\d*\*?/g, '');
   return t;
@@ -65,15 +77,18 @@ export async function parseUsfm(source, report) {
     let osis = null;
     let bookToc3 = null;   // \toc3 短名（如“创”），可作为缩写补充
     let chapter = 0;
-    let curVerse = null;   // {verse, parts:[]}
+    let curVerse = null;   // {verses:[节号...], parts:[]} —— 范围节号共用同一段完整文本
 
     const flushVerse = () => {
       if (!curVerse) return;
       const text2 = cleanText(stripUsfmInline(curVerse.parts.join(' ')));
       if (text2 && osis) {
-        records.push({ osis, chapter, verse: curVerse.verse, text: text2 });
+        // 范围节号（如 \v 1-2）后续诗体续行属于整段，所有节均应得到完整文本
+        for (const v of curVerse.verses) {
+          records.push({ osis, chapter, verse: v, text: text2 });
+        }
       } else if (osis) {
-        report.warn('usfm', `${file} ${chapter}:${curVerse.verse} 清洗后为空，已跳过`);
+        report.warn('usfm', `${file} ${chapter}:${curVerse.verses.join('-')} 清洗后为空，已跳过`);
       }
       curVerse = null;
     };
@@ -100,32 +115,28 @@ export async function parseUsfm(source, report) {
       }
       if ((m = /^\\v\s+(\d+(?:-\d+)?)\s*(.*)$/.exec(line))) {
         flushVerse();
-        const verseNums = expandVerseRange(m[1]);
+        const verseNums = expandVerseRange(m[1]).filter((v) => {
+          if (isValidChapterVerse(chapter, v)) return true;
+          report.error('usfm', `${file} ${chapter}:${v} 节号越界`);
+          return false;
+        });
         if (!verseNums.length) {
           report.error('usfm', `${file} 节号异常: ${m[1]}`);
           continue;
         }
-        // 范围节号（\v 3-4）：展开为多节，共用同一文本
-        for (const v of verseNums) {
-          if (!isValidChapterVerse(chapter, v)) {
-            report.error('usfm', `${file} ${chapter}:${v} 节号越界`);
-            continue;
-          }
-          if (v === verseNums[0]) {
-            curVerse = { verse: v, parts: [m[2] ?? ''] };
-          } else if (osis) {
-            const rangeText = cleanText(stripUsfmInline(m[2] ?? ''));
-            if (rangeText) {
-              records.push({ osis, chapter, verse: v, text: rangeText });
-            } else {
-              report.warn('usfm', `${file} ${chapter}:${v} 范围节文本为空，已跳过`);
-            }
-          }
-        }
+        curVerse = { verses: verseNums, parts: [m[2] ?? ''] };
         continue;
       }
-      // 其余行首标记（\p \q1 \s1 \b \m \h \toc* \mt* …）：忽略
-      if (/^\\/.test(line)) continue;
+      // 行首标记：结构 / 标题类整行忽略；段落 / 诗体类标记后的文字属于经文续行
+      const markerMatch = /^\\([a-zA-Z]+\d*)\s*(.*)$/.exec(line);
+      if (markerMatch) {
+        if (STRUCTURE_LINE_MARKERS.has(markerMatch[1])) continue;
+        // 脚注跨行续行（本项目数据源均为单行脚注，此处仅作防御）
+        if (/^(f|fe|x|ex|fig|xt)$/.test(markerMatch[1])) continue;
+        const rest = markerMatch[2];
+        if (rest.trim() && curVerse) curVerse.parts.push(rest);
+        continue;
+      }
       // 续行：并入当前节
       if (curVerse) curVerse.parts.push(line);
     }

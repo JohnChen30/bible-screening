@@ -1,41 +1,30 @@
 {
-  "dataRoot": "E:\\workspace\\bible_screening\\bible_vasion",
-  "db": "E:\\workspace\\bible_screening\\resources\\bible.db",
-  "startedAt": "2026-10-12T12:56:47.513Z",
-  "finishedAt": "2026-10-12T12:56:48.904Z",
+  "dataRoot": "C:\\Users\\afire\\WorkBuddy\\2026-11-26-17-17-19\\bible-screening\\bible_vasion",
+  "db": "C:\\Users\\afire\\WorkBuddy\\2026-11-26-17-17-19\\bible-screening\\resources\\bible.db",
+  "startedAt": "2026-11-26T09:25:11.415Z",
+  "finishedAt": "2026-11-26T09:25:13.560Z",
   "versions": [
-    {
-      "code": "ccb",
-      "name": "当代译本",
-      "format": "usfm",
-      "ok": true,
-      "books": 66,
-      "chapters": 1189,
-      "verses": 31104,
-      "fatal": null,
-      "entries": []
-    },
     {
       "code": "cuv",
       "name": "和合本",
       "format": "cuv",
       "ok": true,
       "books": 66,
-      "chapters": 1185,
-      "verses": 30842,
+      "chapters": 1189,
+      "verses": 30968,
       "fatal": null,
-      "entries": [
-        {
-          "level": "warn",
-          "stage": "cuv",
-          "message": "Psalms 105:6 文本为空，已跳过"
-        },
-        {
-          "level": "warn",
-          "stage": "cuv",
-          "message": "Luke 1:80 文本为空，已跳过"
-        }
-      ]
+      "entries": []
+    },
+    {
+      "code": "cnv",
+      "name": "新译本",
+      "format": "cuv",
+      "ok": true,
+      "books": 66,
+      "chapters": 1189,
+      "verses": 30997,
+      "fatal": null,
+      "entries": []
     },
     {
       "code": "kjv",
@@ -139,6 +128,17 @@
           "message": "Bible-niv-main/Romans.json 16:24 文本为空，已跳过"
         }
       ]
+    },
+    {
+      "code": "ccb",
+      "name": "当代译本",
+      "format": "usfm",
+      "ok": true,
+      "books": 66,
+      "chapters": 1189,
+      "verses": 31104,
+      "fatal": null,
+      "entries": []
     }
   ]
 }
